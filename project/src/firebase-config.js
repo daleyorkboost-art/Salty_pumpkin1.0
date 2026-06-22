@@ -3,15 +3,25 @@ import { getAnalytics, isSupported } from "firebase/analytics";
 import { browserLocalPersistence, getAuth, GoogleAuthProvider, setPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
+const env = import.meta.env;
+
 const firebaseConfig = {
-  apiKey: "AIzaSyC-FbsLoLjPyeV7QdbAuT8yOFc7njVV5UQ",
-  authDomain: "salty-pumpkin.firebaseapp.com",
-  projectId: "salty-pumpkin",
-  storageBucket: "salty-pumpkin.firebasestorage.app",
-  messagingSenderId: "960750091512",
-  appId: "1:960750091512:web:fb488050ae6c1b3051cf0d",
-  measurementId: "G-NP7EWWB52F",
+  apiKey: env.VITE_FIREBASE_API_KEY,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: env.VITE_FIREBASE_APP_ID,
+  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID,
 };
+
+const missingFirebaseConfig = Object.entries(firebaseConfig)
+  .filter(([key, value]) => key !== "measurementId" && !value)
+  .map(([key]) => key);
+
+if (missingFirebaseConfig.length) {
+  throw new Error(`Missing Firebase environment config: ${missingFirebaseConfig.join(", ")}`);
+}
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
