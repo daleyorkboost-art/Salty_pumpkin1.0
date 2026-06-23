@@ -39,7 +39,8 @@ Before production launch:
 1. Enable Email/Password and Google providers in Firebase Authentication.
 2. Add the production domain to Firebase Authentication Authorized domains.
 3. Create Firestore and deploy `firestore.rules`.
-4. Set `GOOGLE_CLOUD_PROJECT=salty-pumpkin` in Hostinger and restart the Node app.
+4. Copy the Firebase web app config into `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, and optional `VITE_FIREBASE_MEASUREMENT_ID` before building.
+5. Set `GOOGLE_CLOUD_PROJECT=<your-firebase-project-id>` in Hostinger and restart the Node app.
 
 The production website must route `/api/*` to the Node application. If the
 frontend and Node backend use different domains, set `VITE_API_BASE_URL` to the
@@ -199,6 +200,15 @@ Published products appear immediately on the website because admin and storefron
    - `RAZORPAY_KEY_SECRET=<new rotated live key secret>`
    - recommended `RAZORPAY_WEBHOOK_SECRET=<webhook signing secret>`
    - `TWOFACTOR_API_KEY=<2factor.in API key>`
+   - `VITE_FIREBASE_API_KEY=<Firebase web API key>`
+   - `VITE_FIREBASE_AUTH_DOMAIN=<project-id>.firebaseapp.com`
+   - `VITE_FIREBASE_PROJECT_ID=<project-id>`
+   - `VITE_FIREBASE_STORAGE_BUCKET=<project-id>.appspot.com`
+   - `VITE_FIREBASE_MESSAGING_SENDER_ID=<sender ID>`
+   - `VITE_FIREBASE_APP_ID=<Firebase web app ID>`
+   - optional `VITE_FIREBASE_MEASUREMENT_ID=<Analytics measurement ID>`
+   - `GOOGLE_CLOUD_PROJECT=<project-id>`
+   - `FIREBASE_SERVICE_ACCOUNT_JSON=<complete service-account JSON>` for phone-login Firebase custom tokens
 6. Start/restart the Node.js app.
 
 After restart, open `/api/health`. It must return JSON with `"status":"ok"`.

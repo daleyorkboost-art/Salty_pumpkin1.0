@@ -5,18 +5,27 @@ import { getFirestore } from "firebase/firestore";
 
 const env = import.meta.env;
 
+const firebaseEnv = {
+  VITE_FIREBASE_API_KEY: env.VITE_FIREBASE_API_KEY,
+  VITE_FIREBASE_AUTH_DOMAIN: env.VITE_FIREBASE_AUTH_DOMAIN,
+  VITE_FIREBASE_PROJECT_ID: env.VITE_FIREBASE_PROJECT_ID,
+  VITE_FIREBASE_STORAGE_BUCKET: env.VITE_FIREBASE_STORAGE_BUCKET,
+  VITE_FIREBASE_MESSAGING_SENDER_ID: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  VITE_FIREBASE_APP_ID: env.VITE_FIREBASE_APP_ID,
+};
+
 const firebaseConfig = {
-  apiKey: env.VITE_FIREBASE_API_KEY,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: env.VITE_FIREBASE_APP_ID,
+  apiKey: firebaseEnv.VITE_FIREBASE_API_KEY,
+  authDomain: firebaseEnv.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: firebaseEnv.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: firebaseEnv.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: firebaseEnv.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: firebaseEnv.VITE_FIREBASE_APP_ID,
   measurementId: env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-const missingFirebaseConfig = Object.entries(firebaseConfig)
-  .filter(([key, value]) => key !== "measurementId" && !value)
+const missingFirebaseConfig = Object.entries(firebaseEnv)
+  .filter(([, value]) => !value || /^YOUR_|^your-/i.test(String(value)))
   .map(([key]) => key);
 
 if (missingFirebaseConfig.length) {
