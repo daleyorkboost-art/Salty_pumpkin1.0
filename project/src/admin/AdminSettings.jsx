@@ -257,11 +257,12 @@ export function AdminSettings() {
                 ["announcement"], ["footerTagline", "textarea"], ["aboutTitle"], ["aboutContent", "textarea"],
                 ["aboutImage"], ["contactTitle"], ["contactPhone"], ["contactEmail"], ["contactAddress", "textarea"],
                 ["contactWhatsapp"], ["contactMapLink"], ["contactBusinessHours"],
-                ["contactInstagram"], ["contactFacebook"],
+                ["contactInstagram"], ["contactFacebook"], ["authPromoImage"], ["authCouponCode"], ["authCouponText"],
               ].map(([key, type = "text"]) => (
                 <Field key={key} label={nice(key)} type={type} value={draft.content?.[key] || ""} onChange={(value) => update("content", key, value)} />
               ))}
               <label className="upload-drop compact-upload">Upload About Us image<input type="file" accept="image/*" onChange={(event) => uploadContentImage(event, (url) => update("content", "aboutImage", url))} /></label>
+              <label className="upload-drop compact-upload">Upload Login promo image<input type="file" accept="image/*" onChange={(event) => uploadContentImage(event, (url) => update("content", "authPromoImage", url))} /></label>
             </div>
             <button disabled={Boolean(busy)} onClick={() => save("content")}>Save content</button>
           </div>

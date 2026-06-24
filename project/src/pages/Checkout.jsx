@@ -66,6 +66,7 @@ export function Checkout() {
   const defaultAddress = savedAddresses.find((address) => address.isDefault) || savedAddresses[0];
   const [selectedAddressId, setSelectedAddressId] = useState(defaultAddress?.id || "new");
   const [shipping, setShipping] = useState(defaultAddress || emptyAddress(user));
+  const [editingAddress, setEditingAddress] = useState(!defaultAddress);
   const [saveAddress, setSaveAddress] = useState(!savedAddresses.length);
   const [makeDefault, setMakeDefault] = useState(!savedAddresses.length);
   const [paymentMethod, setPaymentMethod] = useState("cod");
@@ -235,7 +236,8 @@ export function Checkout() {
               setSelectedAddressId(id);
               const selected = savedAddresses.find((address) => address.id === id);
               setShipping(selected || emptyAddress(user));
-              setSaveAddress(id !== "new");
+              setEditingAddress(id === "new");
+              setSaveAddress(id === "new");
               setMakeDefault(Boolean(selected?.isDefault || id === "new"));
             }}>
               {savedAddresses.map((address, index) => <option value={address.id} key={address.id}>{address.isDefault ? "Default - " : ""}{address.label || `Address ${index + 1}`} - {address.line1}, {address.city}</option>)}
@@ -243,10 +245,22 @@ export function Checkout() {
             </select>
           </label>
         )}
-        <label>Address label<input value={shipping.label || ""} onChange={(event) => setShipping({ ...shipping, label: event.target.value })} placeholder="Home, Work, Grandparents" /></label>
-        <AddressFields value={shipping} onChange={setShipping} onServiceability={setServiceability} />
-        <label className="check-row"><input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} />{selectedAddressId === "new" ? "Save this address" : "Update selected address"}</label>
-        {saveAddress && <label className="check-row"><input type="checkbox" checked={makeDefault} onChange={(event) => setMakeDefault(event.target.checked)} />Use as my default address</label>}
+        {selectedAddressId !== "new" && !editingAddress && (
+          <div className="selected-address-card">
+            <strong>{shipping.label || "Selected address"}</strong>
+            <span>{[shipping.line1, shipping.city, shipping.state, shipping.pincode].filter(Boolean).join(", ")}</span>
+            <small>{shipping.name} {shipping.phone ? `- ${shipping.phone}` : ""}</small>
+            <button type="button" className="secondary-action" onClick={() => { setEditingAddress(true); setSaveAddress(true); }}>Edit Address</button>
+          </div>
+        )}
+        {editingAddress && (
+          <>
+            <label>Address label<input value={shipping.label || ""} onChange={(event) => setShipping({ ...shipping, label: event.target.value })} placeholder="Home, Work, Grandparents" /></label>
+            <AddressFields value={shipping} onChange={setShipping} onServiceability={setServiceability} />
+            <label className="check-row"><input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} />{selectedAddressId === "new" ? "Save this address" : "Update selected address"}</label>
+            {saveAddress && <label className="check-row"><input type="checkbox" checked={makeDefault} onChange={(event) => setMakeDefault(event.target.checked)} />Use as my default address</label>}
+          </>
+        )}
         <label>Payment method
           <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
             <option value="cod">Cash on delivery</option>

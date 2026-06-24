@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { ErrorState, Loading } from "../components/Status";
 import { useCart } from "../context/CartContext";
@@ -12,12 +12,16 @@ const fallbackImage = "/uploads/103_Pink-103.jpg";
 export function ProductDetail() {
   const { slug } = useParams();
   const { add } = useCart();
+  const navigate = useNavigate();
   const wishlist = useWishlist();
   const [qty, setQty] = useState(1);
   const [selectedColor, setSelectedColor] = useState("");
   const [selectedAge, setSelectedAge] = useState("");
   const [activeImage, setActiveImage] = useState("");
+  const [reviewForm, setReviewForm] = useState({ rating: 5, text: "", media: [] });
+  const [reviewMessage, setReviewMessage] = useState("");
   const { loading, data, error } = useAsync(() => Promise.all([catalogApi.product(slug), catalogApi.products()]), [slug]);
+  const reviewsState = useAsync(() => catalogApi.reviews(slug), [slug, reviewMessage]);
   const product = data?.[0]?.product;
   const allProducts = data?.[1]?.products || [];
   const colors = useMemo(() => uniqueValues([...(product?.colors || []), ...(product?.variants || []).map((variant) => variant.color || variant.colour)]), [product]);
@@ -61,6 +65,12 @@ export function ProductDetail() {
   if (!product) return <ErrorState message="Product not found" action={<Link to="/shop">Back to shop</Link>} />;
 
   function addSelectedToCart() {
+    const cartProduct = selectedCartProduct();
+    Array.from({ length: qty }).forEach(() => add(cartProduct));
+    trackEvent("add_to_cart", productPayload(cartProduct, qty));
+  }
+
+  function selectedCartProduct() {
     const cartProduct = {
       ...product,
       price: Number(selectedVariant?.priceOverride || product.price || 0),
@@ -71,8 +81,27 @@ export function ProductDetail() {
       color: selectedColor,
       variantSku: selectedVariant?.sku || "",
     };
+    return cartProduct;
+  }
+
+  function buyNow() {
+    const cartProduct = selectedCartProduct();
     Array.from({ length: qty }).forEach(() => add(cartProduct));
     trackEvent("add_to_cart", productPayload(cartProduct, qty));
+    trackEvent("begin_checkout", productPayload(cartProduct, qty));
+    navigate("/checkout");
+  }
+
+  async function submitReview(event) {
+    event.preventDefault();
+    setReviewMessage("");
+    const body = new FormData();
+    body.append("rating", reviewForm.rating);
+    body.append("text", reviewForm.text);
+    Array.from(reviewForm.media || []).forEach((file) => body.append("media", file));
+    await catalogApi.createReview(slug, body);
+    setReviewForm({ rating: 5, text: "", media: [] });
+    setReviewMessage("Review submitted. Thank you for sharing your experience.");
   }
 
   return (
@@ -94,7 +123,7 @@ export function ProductDetail() {
           </div>
           <div className="detail-copy">
             <h1>{product.name}</h1>
-            <div className="rating-row">5.0 stars <span>(45 reviews)</span></div>
+            <div className="rating-row">{Number(reviewsState.data?.average || 5).toFixed(1)} stars <span>({reviewsState.data?.total || 0} reviews)</span></div>
             <p className="price">
               {product.mrp > product.price && <span>Rs. {Number(product.mrp || 0).toLocaleString("en-IN")}</span>}
               Rs. {Number(selectedVariant?.priceOverride || product.price || 0).toLocaleString("en-IN")}
@@ -110,7 +139,7 @@ export function ProductDetail() {
               <button type="button" onClick={() => setQty(qty + 1)}>+</button>
             </div>
             <button className="primary-action wide" disabled={stock <= 0} onClick={addSelectedToCart}>Add to cart</button>
-            <Link className="secondary-action wide" to="/checkout">Buy now</Link>
+            <button className="secondary-action wide" type="button" disabled={stock <= 0} onClick={buyNow}>Buy now</button>
             <div className="mini-actions">
               <button type="button" className="link-button" onClick={() => wishlist.toggle(product)}>{wishlist.has(product._id) ? "Remove from Wishlist" : "Add to Wishlist"}</button>
               <span>Share</span>
@@ -122,6 +151,33 @@ export function ProductDetail() {
       <section className="section product-tabs">
         <article><h2>Product Details</h2><ul><li>Fabric: Premium cotton blend</li><li>Soft, breathable finish</li><li>Perfect for casual and party wear</li></ul></article>
         <article><h2>Wash Care</h2><div className="wash-icons"><span>Machine wash cold</span><span>Do not bleach</span><span>Tumble dry low</span><span>Iron low</span></div></article>
+      </section>
+      <section className="section product-reviews">
+        <div className="reference-title"><span /><h2>Customer Reviews</h2><span /></div>
+        <div className="reviews-grid">
+          <form className="form-card" onSubmit={submitReview}>
+            {reviewMessage && <div className="form-success">{reviewMessage}</div>}
+            <label>Rating
+              <select value={reviewForm.rating} onChange={(event) => setReviewForm({ ...reviewForm, rating: event.target.value })}>
+                {[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating} stars</option>)}
+              </select>
+            </label>
+            <label>Review<textarea required minLength={3} value={reviewForm.text} onChange={(event) => setReviewForm({ ...reviewForm, text: event.target.value })} placeholder="Share fit, fabric, sizing, or delivery feedback" /></label>
+            <label>Images or short videos<input type="file" accept="image/*,video/mp4,video/webm,video/quicktime" multiple onChange={(event) => setReviewForm({ ...reviewForm, media: event.target.files })} /></label>
+            <button>Submit review</button>
+          </form>
+          <div className="review-list">
+            {(reviewsState.data?.reviews || []).map((review) => (
+              <article className="review-card" key={review.id}>
+                <strong>{review.customerName}</strong>
+                <span>{review.rating} stars</span>
+                <p>{review.text}</p>
+                {!!review.media?.length && <div className="review-media">{review.media.map((item) => item.type === "video" ? <video key={item.url} src={item.url} controls /> : <img key={item.url} src={item.url} alt="" />)}</div>}
+              </article>
+            ))}
+            {!reviewsState.loading && !(reviewsState.data?.reviews || []).length && <p className="empty-state">No reviews yet.</p>}
+          </div>
+        </div>
       </section>
       {related.length > 0 && (
         <section className="section">

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAsync } from "../hooks/useAsync";
-import { catalogApi, contactApi } from "../services/api";
+import { catalogApi, contactApi, orderApi } from "../services/api";
 
 const defaultAboutContent = `At Salty Pumpkin, we believe childhood should be filled with comfort, confidence, creativity, and style. We are a modern kidswear brand dedicated to bringing high-quality, fashionable, and affordable clothing for children who love to explore, play, and express themselves.
 
@@ -255,6 +255,22 @@ export function Support() {
 }
 
 export function OrderTracking() {
+  const [form, setForm] = useState({ lookup: "", contact: "" });
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    setResult(null);
+    try {
+      const data = await orderApi.track(form);
+      setResult(data.order);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   return (
     <section className="section page-section contact-grid">
       <div>
@@ -266,14 +282,26 @@ export function OrderTracking() {
           <p>Email info@saltypumpkin.in with your order number and registered phone number.</p>
         </div>
       </div>
-      <form className="form-card" onSubmit={(event) => event.preventDefault()}>
-        <label>Order number<input placeholder="SP-20260602-ABC123" required /></label>
-        <label>Email or phone<input placeholder="you@example.com / 9876543210" required /></label>
+      <form className="form-card" onSubmit={submit}>
+        {error && <div className="form-error">{error}</div>}
+        <label>Order number or AWB<input value={form.lookup} onChange={(event) => setForm({ ...form, lookup: event.target.value })} placeholder="SP-20260602-ABC123 / AWB" required /></label>
+        <label>Email or phone<input value={form.contact} onChange={(event) => setForm({ ...form, contact: event.target.value })} placeholder="you@example.com / 9876543210" /></label>
         <button>Check status</button>
-        <p className="muted">Live carrier tracking appears after delivery integration is configured.</p>
+        {result ? (
+          <div className="tracking-result">
+            <h2>{result.orderNumber || result._id}</h2>
+            <p>Status: <strong>{formatPolicyStatus(result.shipmentStatus || result.status)}</strong></p>
+            <p>Tracking number: <strong>{result.trackingNumber || "Shipment creation pending"}</strong></p>
+            <p>Courier: <strong>{result.courierPartner || "Delhivery"}</strong></p>
+          </div>
+        ) : <p className="muted">Live carrier tracking appears after delivery integration is configured.</p>}
       </form>
     </section>
   );
+}
+
+function formatPolicyStatus(value) {
+  return String(value || "pending").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export function Company() {

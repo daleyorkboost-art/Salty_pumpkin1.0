@@ -116,6 +116,12 @@ export function AuthProvider({ children }) {
     return next;
   }
 
+  async function otpLogin(sessionData) {
+    const next = backendSession(sessionData);
+    setSession(next);
+    return next;
+  }
+
   async function forgotPassword(email) {
     try {
       await firebaseForgotPassword(email);
@@ -153,6 +159,7 @@ export function AuthProvider({ children }) {
     register,
     googleLogin,
     phoneLogin,
+    otpLogin,
     forgotPassword,
     logout,
     updateUser,

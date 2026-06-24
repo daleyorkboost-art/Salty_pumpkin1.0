@@ -9,6 +9,10 @@ export function OrderDetail() {
   const { loading, data, error, reload } = useAsync(() => orderApi.detail(id), [id]);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState("");
+  const [requestType, setRequestType] = useState("return");
+  const [requestReason, setRequestReason] = useState("");
+  const [requestFiles, setRequestFiles] = useState([]);
+  const [requestMessage, setRequestMessage] = useState("");
   const order = data?.order;
 
   if (loading) return <Loading label="Loading order..." />;
@@ -25,6 +29,20 @@ export function OrderDetail() {
     } finally {
       setRefreshing(false);
     }
+  }
+
+  async function submitRequest(event) {
+    event.preventDefault();
+    setRequestMessage("");
+    const body = new FormData();
+    body.append("type", requestType);
+    body.append("reason", requestReason);
+    Array.from(requestFiles || []).forEach((file) => body.append("media", file));
+    await orderApi.request(id, body);
+    setRequestReason("");
+    setRequestFiles([]);
+    setRequestMessage(`${formatStatus(requestType)} request submitted.`);
+    await reload();
   }
 
   return (
@@ -55,6 +73,12 @@ export function OrderDetail() {
           </a>
         )}
         <div className="shipment-timeline">
+          {trackingStages.map((stage) => (
+            <div className={`shipment-event ${stageDone(order, stage.status) ? "done" : ""}`} key={stage.status}>
+              <span />
+              <div><strong>{stage.label}</strong><p>{stageDone(order, stage.status) ? "Updated" : "Pending"}</p></div>
+            </div>
+          ))}
           {(order.shipmentTimeline || []).map((item, index) => (
             <div className="shipment-event" key={`${item.createdAt}-${index}`}>
               <span />
@@ -67,8 +91,42 @@ export function OrderDetail() {
       <div className="stack">
         {order.items?.map((item) => <div className="order-row" key={item._id || item.name}><span>{item.name}</span><span>Qty {item.qty}</span></div>)}
       </div>
+      <form className="form-card" onSubmit={submitRequest}>
+        <h2>Need help with this order?</h2>
+        {requestMessage && <div className="form-success">{requestMessage}</div>}
+        <label>Request type
+          <select value={requestType} onChange={(event) => setRequestType(event.target.value)}>
+            <option value="return">Return Request</option>
+            <option value="exchange">Exchange Request</option>
+            <option value="cancel">Order Cancellation</option>
+          </select>
+        </label>
+        <label>Reason<textarea required value={requestReason} onChange={(event) => setRequestReason(event.target.value)} placeholder="Tell us what happened" /></label>
+        <label>Upload proof images<input type="file" accept="image/*" multiple onChange={(event) => setRequestFiles(event.target.files)} /></label>
+        <button>Submit request</button>
+        {!!order.customerRequests?.length && <div className="request-history">
+          <h3>Request history</h3>
+          {order.customerRequests.map((request) => <p key={request.id}><strong>{formatStatus(request.type)}</strong> - {formatStatus(request.status)} - {formatDateTime(request.createdAt)}</p>)}
+        </div>}
+      </form>
     </section>
   );
+}
+
+const trackingStages = [
+  { status: "pending", label: "Order Placed" },
+  { status: "accepted", label: "Order Accepted" },
+  { status: "packed", label: "Order Packed" },
+  { status: "shipped", label: "Order Shipped" },
+  { status: "out_for_delivery", label: "Out for Delivery" },
+  { status: "delivered", label: "Delivered" },
+];
+
+function stageDone(order, status) {
+  const orderStatus = String(order.shipmentStatus || order.status || "pending");
+  const orderIndex = trackingStages.findIndex((stage) => stage.status === orderStatus);
+  const stageIndex = trackingStages.findIndex((stage) => stage.status === status);
+  return orderIndex >= 0 && stageIndex >= 0 && stageIndex <= orderIndex;
 }
 
 function formatStatus(value) {

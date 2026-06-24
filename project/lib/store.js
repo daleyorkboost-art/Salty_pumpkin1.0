@@ -233,6 +233,7 @@ let users = readCollection("users", []);
 let passwordResets = readCollection("password-resets", []);
 let otps = readCollection("otps", []);
 let contactMessages = readCollection("contact-messages", []);
+let reviews = readCollection("reviews", []);
 let settings = readDocument("settings", {});
 let settingsAudit = readCollection("settings-audit", []);
 let importLogs = readCollection("import-logs", []);
@@ -261,6 +262,9 @@ module.exports = {
 
   getContactMessages: () => contactMessages,
   saveContactMessages: () => writeCollection("contact-messages", contactMessages),
+
+  getReviews: () => reviews,
+  saveReviews: () => writeCollection("reviews", reviews),
 
   getSettings: () => settings,
   replaceSettings: (next) => {

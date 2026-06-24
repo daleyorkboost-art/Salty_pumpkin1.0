@@ -72,6 +72,8 @@ export const authApi = {
   register: (body) => api("/auth/register", { method: "POST", body }),
   sendOtp: (body) => api("/auth/send-otp", { method: "POST", body }),
   verifyOtp: (body) => api("/auth/verify-otp", { method: "POST", body }),
+  sendEmailOtp: (body) => api("/auth/send-email-otp", { method: "POST", body }),
+  verifyEmailOtp: (body) => api("/auth/verify-email-otp", { method: "POST", body }),
   forgotPassword: (body) => api("/auth/forgot-password", { method: "POST", body }),
   resetPassword: (body) => api("/auth/reset-password", { method: "POST", body }),
   me: () => api("/auth/me"),
@@ -104,6 +106,8 @@ export const catalogApi = {
     return api(`/products${search.toString() ? `?${search}` : ""}`);
   },
   product: (slug) => api(`/products/${slug}`),
+  reviews: (slug) => api(`/products/${slug}/reviews`),
+  createReview: (slug, formData) => api(`/products/${slug}/reviews`, { method: "POST", body: formData }),
   settings: () => api("/storefront/settings"),
 };
 
@@ -111,7 +115,9 @@ export const orderApi = {
   quote: (body) => api("/orders/quote", { method: "POST", body }),
   create: (body) => api("/orders", { method: "POST", body }),
   mine: () => api("/orders/my"),
+  track: (body) => api("/orders/track", { method: "POST", body }),
   detail: (id) => api(`/orders/${id}`),
+  request: (id, formData) => api(`/orders/${id}/request`, { method: "POST", body: formData }),
   refreshTracking: (id) => api(`/orders/${id}/tracking/refresh`, { method: "POST" }),
 };
 

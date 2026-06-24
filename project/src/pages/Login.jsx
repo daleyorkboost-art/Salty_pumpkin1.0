@@ -8,9 +8,9 @@ import { PasswordField } from "../components/PasswordField";
 import { useAsync } from "../hooks/useAsync";
 
 const modeCopy = {
-  login: ["Welcome Back 👋", "Sign in to access your orders, wishlist and exclusive offers."],
+  login: ["Welcome Back", "Sign in with an email OTP to access your orders, wishlist and exclusive offers."],
   register: ["Join the Salty Pumpkin family", "Create your account for faster checkout and first access to new collections."],
-  forgot: ["Reset your password", "Enter your email and we will help you get back to your account."],
+  forgot: ["Password Login", "Use your existing password if you already created one."],
   phone: ["Sign in with Phone OTP", "Use your mobile number for a quick and secure sign in."],
 };
 
@@ -94,7 +94,7 @@ export function Login() {
   const [countryCode, setCountryCode] = useState("+91");
   const [cooldown, setCooldown] = useState(0);
   const [expiresIn, setExpiresIn] = useState(0);
-  const { login, register, googleLogin, forgotPassword, phoneLogin } = useAuth();
+  const { login, register, googleLogin, phoneLogin, otpLogin } = useAuth();
   const navigate = useNavigate();
   const { data: settingsData } = useAsync(() => catalogApi.settings().catch(() => ({ settings: {} })), []);
   const logoUrl = settingsData?.settings?.store?.logoUrl || "/salty-pumpkin-logo.svg";
@@ -119,9 +119,8 @@ export function Login() {
     setNotice("");
     setLoading(true);
     try {
-      if (mode === "forgot") {
-        await forgotPassword(form.email);
-        setNotice("Password reset instructions have been sent to your email.");
+      if (mode === "login") {
+        await sendEmailOtp();
       } else {
         if (mode === "register" && form.password !== form.confirmPassword) {
           throw new Error("Passwords do not match.");
@@ -174,6 +173,39 @@ export function Login() {
     }
   }
 
+  async function sendEmailOtp() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await authApi.sendEmailOtp({ email: form.email });
+      setOtpSent(true);
+      setOtp("");
+      setCooldown(Number(data.retryAfter || 30));
+      setExpiresIn(Number(data.expiresIn || 300));
+      setNotice(data.message);
+    } catch (err) {
+      setError(customerSafeError(err, "login"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function verifyEmailOtp() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await authApi.verifyEmailOtp({ email: form.email, otp });
+      const session = await otpLogin(data);
+      setNotice(data.message || "Email verified successfully.");
+      await trackEvent("login", { method: "email_otp", user_data: { email: form.email } });
+      navigate(session.user.role === "admin" ? "/admin" : "/account", { replace: true });
+    } catch (err) {
+      setError(customerSafeError(err, "login"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function verifyOtp() {
     setLoading(true);
     setError("");
@@ -199,7 +231,8 @@ export function Login() {
             <p className="auth-story-kicker">Made for little moments</p>
             <h1>Playful style.<br />Everyday comfort.</h1>
             <p>Thoughtfully designed kidswear for celebrations, adventures and everything in between.</p>
-            <div className="auth-season-offer"><strong>Seasonal treat</strong><span>Enjoy 20% off your first order</span></div>
+            {settingsData?.settings?.content?.authPromoImage && <img className="auth-promo-image" src={settingsData.settings.content.authPromoImage} alt="" />}
+            <div className="auth-season-offer"><strong>{settingsData?.settings?.content?.authCouponCode || "Seasonal treat"}</strong><span>{settingsData?.settings?.content?.authCouponText || "Enjoy 20% off your first order"}</span></div>
           </div>
           <div className="auth-trust-row">
             <span><strong>Free shipping</strong>Above Rs. 999</span>
@@ -220,10 +253,10 @@ export function Login() {
               {[
                 ["login", "Login"],
                 ["register", "Register"],
-                ["forgot", "Forgot Password"],
                 ["phone", "Phone OTP"],
+                ["forgot", "Password Login"],
               ].map(([key, label]) => (
-                <button type="button" role="tab" aria-selected={mode === key} className={mode === key ? "active" : ""} onClick={() => { setMode(key); setError(""); setNotice(""); }} key={key}>{label}</button>
+                <button type="button" role="tab" aria-selected={mode === key} className={mode === key ? "active" : ""} onClick={() => { setMode(key); setError(""); setNotice(""); setOtpSent(false); setOtp(""); }} key={key}>{label}</button>
               ))}
             </div>
             <div className="auth-form-content" key={mode}>
@@ -261,16 +294,28 @@ export function Login() {
                     {loading && <span className="button-spinner" aria-hidden="true" />}{loading ? "Please wait..." : otpSent ? "Verify & Sign In" : "Send OTP"}
                   </button>
                 </>
+              ) : mode === "login" ? (
+                <>
+                  <AuthField label="Email address" icon="email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="you@example.com" required />
+                  {otpSent && <OtpBoxes value={otp} onChange={setOtp} />}
+                  {otpSent && <div className="otp-meta">
+                    <span>{expiresIn > 0 ? `OTP expires in ${Math.floor(expiresIn / 60)}:${String(expiresIn % 60).padStart(2, "0")}` : "OTP expired"}</span>
+                    <button type="button" className="link-button" disabled={loading || cooldown > 0} onClick={sendEmailOtp}>{cooldown > 0 ? `Resend in ${cooldown}s` : "Resend OTP"}</button>
+                  </div>}
+                  <button className="auth-submit" type="button" disabled={loading || (otpSent && (otp.length !== 6 || expiresIn <= 0))} onClick={otpSent ? verifyEmailOtp : sendEmailOtp}>
+                    {loading && <span className="button-spinner" aria-hidden="true" />}{loading ? "Please wait..." : otpSent ? "Verify & Sign In" : "Send Email OTP"}
+                  </button>
+                </>
               ) : (
                 <>
                   <AuthField label="Email address" icon="email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="you@example.com" required />
-                  {mode !== "forgot" && <PasswordField premium value={form.password} onChange={(password) => setForm({ ...form, password })} placeholder="Enter your password" minLength={6} required />}
+                  <PasswordField premium value={form.password} onChange={(password) => setForm({ ...form, password })} placeholder="Enter your password" minLength={6} required />
                   {mode === "register" && <PasswordField premium label="Confirm Password" value={form.confirmPassword} onChange={(confirmPassword) => setForm({ ...form, confirmPassword })} placeholder="Confirm your password" minLength={6} required />}
                 </>
               )}
-              {mode !== "phone" && (
+              {mode !== "phone" && mode !== "login" && (
                 <button className="auth-submit" disabled={loading}>
-                  {loading && <span className="button-spinner" aria-hidden="true" />}{loading ? "Please wait..." : mode === "register" ? "Create account" : mode === "forgot" ? "Send reset link" : "Sign in"}
+                  {loading && <span className="button-spinner" aria-hidden="true" />}{loading ? "Please wait..." : mode === "register" ? "Create account" : "Sign in"}
                 </button>
               )}
               {(mode === "login" || mode === "register") && (

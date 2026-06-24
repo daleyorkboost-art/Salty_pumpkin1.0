@@ -17,6 +17,7 @@ export function Account() {
   const emptyAddress = { name: "", phone: "", line1: "", city: "", district: "", state: "", pincode: "", country: "India", label: "", isDefault: false };
   const [address, setAddress] = useState(emptyAddress);
   const [editingId, setEditingId] = useState("");
+  const [addressFormOpen, setAddressFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const { loading, data, error } = useAsync(() => orderApi.mine(), []);
@@ -48,6 +49,7 @@ export function Account() {
       await syncCurrentFirebaseCustomerData(data.user, orders);
       setAddress(emptyAddress);
       setEditingId("");
+      setAddressFormOpen(false);
       setMessage(editingId ? "Address updated." : "Address saved.");
     } finally {
       setSaving(false);
@@ -126,25 +128,27 @@ export function Account() {
           ))}
         </div>
         <h2 id="addresses">Saved Addresses</h2>
+        <button type="button" className="secondary-action" onClick={() => { setEditingId(""); setAddress(emptyAddress); setAddressFormOpen(true); }}>Add Address</button>
         <div className="stack">
           {(user.addresses || []).map((item) => (
             <div className={`order-row address-row ${item.isDefault ? "default-address" : ""}`} key={item.id}>
-              <span><strong>{item.label || "Saved address"}</strong><br />{item.line1}, {item.city}</span>
+              <span><strong>{item.label || "Saved address"}</strong><br />{[item.line1, item.city, item.state, item.pincode].filter(Boolean).join(", ")}<br /><small>{item.name} {item.phone ? `- ${item.phone}` : ""}</small></span>
               <span>{item.pincode}{item.isDefault ? " - Default" : ""}</span>
-              <button type="button" onClick={() => { setEditingId(item.id); setAddress(item); }}>Edit</button>
+              <button type="button" onClick={() => { setEditingId(item.id); setAddress(item); setAddressFormOpen(true); }}>Edit</button>
               {!item.isDefault && <button type="button" onClick={() => setDefaultAddress(item.id)} disabled={saving}>Set default</button>}
               <button type="button" onClick={() => deleteAddress(item.id)} disabled={saving}>Remove</button>
             </div>
           ))}
+          {!(user.addresses || []).length && <p className="empty-state">No saved addresses yet.</p>}
         </div>
-        <form className="form-card" onSubmit={addAddress}>
+        {addressFormOpen && <form className="form-card" onSubmit={addAddress}>
           <h2>{editingId ? "Edit address" : "Add address"}</h2>
           <label>Address label<input value={address.label || ""} onChange={(event) => setAddress({ ...address, label: event.target.value })} placeholder="Home, Work, Grandparents" /></label>
           <AddressFields value={address} onChange={setAddress} />
           <label className="check-row"><input type="checkbox" checked={Boolean(address.isDefault)} onChange={(event) => setAddress({ ...address, isDefault: event.target.checked })} />Set as default address</label>
           <button disabled={saving}>{saving ? "Saving..." : editingId ? "Update address" : "Save address"}</button>
-          {editingId && <button className="secondary-action" type="button" onClick={() => { setEditingId(""); setAddress(emptyAddress); }}>Cancel edit</button>}
-        </form>
+          <button className="secondary-action" type="button" onClick={() => { setEditingId(""); setAddress(emptyAddress); setAddressFormOpen(false); }}>Cancel</button>
+        </form>}
       </div>
       </div>
     </section>

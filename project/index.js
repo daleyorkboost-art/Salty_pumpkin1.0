@@ -57,22 +57,23 @@ const firebaseAdminApp = getFirebaseAdminApps().length
 app.set("trust proxy", 1); // Hostinger terminates TLS at a proxy
 const redirectFile = path.join(store.dataDir, "redirects.json");
 const uploadsDir = path.join(__dirname, "public", "uploads");
+const diskUploadStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    cb(null, uploadsDir);
+  },
+  filename(req, file, cb) {
+    const ext = path.extname(file.originalname || "").toLowerCase() || ".jpg";
+    const base = path
+      .basename(file.originalname || "product", ext)
+      .replace(/[^a-z0-9_-]+/gi, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 80) || "product";
+    cb(null, `${base}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`);
+  },
+});
 const upload = multer({
-  storage: multer.diskStorage({
-    destination(req, file, cb) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-      cb(null, uploadsDir);
-    },
-    filename(req, file, cb) {
-      const ext = path.extname(file.originalname || "").toLowerCase() || ".jpg";
-      const base = path
-        .basename(file.originalname || "product", ext)
-        .replace(/[^a-z0-9_-]+/gi, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 80) || "product";
-      cb(null, `${base}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`);
-    },
-  }),
+  storage: diskUploadStorage,
   limits: { fileSize: 8 * 1024 * 1024, files: 80 },
   fileFilter(req, file, cb) {
     cb(null, /^image\/(png|jpe?g|webp|gif)$/i.test(file.mimetype));
@@ -83,6 +84,13 @@ const importUpload = multer({
   limits: { fileSize: 20 * 1024 * 1024, files: 1 },
   fileFilter(req, file, cb) {
     cb(null, /\.(xlsx|csv)$/i.test(file.originalname || ""));
+  },
+});
+const customerMediaUpload = multer({
+  storage: diskUploadStorage,
+  limits: { fileSize: 25 * 1024 * 1024, files: 6 },
+  fileFilter(req, file, cb) {
+    cb(null, /^(image\/(png|jpe?g|webp|gif)|video\/(mp4|webm|quicktime))$/i.test(file.mimetype));
   },
 });
 
@@ -261,6 +269,24 @@ function publicUser(user) {
   if (!user) return null;
   const { passwordHash, ...safe } = user;
   return safe;
+}
+
+function publicOrderTracking(order) {
+  return {
+    _id: order._id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    shipmentStatus: order.shipmentStatus,
+    courierPartner: order.courierPartner,
+    trackingNumber: order.trackingNumber || order.waybill || "",
+    waybill: order.waybill || order.trackingNumber || "",
+    estimatedDeliveryDate: order.estimatedDeliveryDate,
+    shipmentTimeline: order.shipmentTimeline || order.timeline || [],
+    shipmentError: order.shipmentError || "",
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+  };
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
@@ -1274,6 +1300,45 @@ function normalizePhone(countryCode, phone) {
   return { countryCode: normalizedCode, local, e164: `${normalizedCode}${local}`, providerPhone: `${normalizedCode.replace("+", "")}${local}` };
 }
 
+function normalizeEmail(email) {
+  const lower = String(email || "").trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lower) ? lower : "";
+}
+
+function generateOtp() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+function storeEmailOtp(email) {
+  const otps = store.getOtps();
+  const existingIndex = otps.findIndex((item) => item.type === "email" && item.email === email);
+  const existing = existingIndex >= 0 ? otps[existingIndex] : null;
+  const now = Date.now();
+  if (existing?.cooldownUntil > now) {
+    return { error: "Please wait before requesting another OTP.", status: 429, retryAfter: Math.ceil((existing.cooldownUntil - now) / 1000) };
+  }
+  if (existing?.resendCount >= 4 && existing?.resendWindowUntil > now) {
+    return { error: "Maximum resend attempts reached. Please try again later.", status: 429 };
+  }
+  const otp = generateOtp();
+  const record = {
+    type: "email",
+    email,
+    otpHash: hashPassword(otp),
+    expiresAt: now + 10 * 60 * 1000,
+    cooldownUntil: now + 30 * 1000,
+    resendCount: existing?.resendWindowUntil > now ? Number(existing.resendCount || 0) + 1 : 1,
+    resendWindowUntil: existing?.resendWindowUntil > now ? existing.resendWindowUntil : now + 60 * 60 * 1000,
+    verifyAttempts: 0,
+    createdAt: new Date().toISOString(),
+  };
+  if (existingIndex === -1) otps.push(record);
+  else otps[existingIndex] = record;
+  store.saveOtps();
+  console.log(`[auth] Email login OTP for ${email}: ${otp}`);
+  return { success: true, retryAfter: 30, expiresIn: 600 };
+}
+
 app.post("/api/auth/send-otp", otpSendLimiter, async (req, res) => {
   const phoneData = normalizePhone(req.body.countryCode, req.body.phone);
   if (!phoneData) {
@@ -1416,6 +1481,75 @@ app.post("/api/auth/verify-otp", otpVerifyLimiter, async (req, res) => {
   otps.splice(otps.indexOf(record), 1);
   store.saveOtps();
   res.json({ success: true, message: "Phone verified successfully.", user: publicUser(user), token: createToken(publicUser(user)), customToken });
+});
+
+app.post("/api/auth/send-email-otp", otpSendLimiter, (req, res) => {
+  const email = normalizeEmail(req.body.email);
+  if (!email) {
+    res.status(400).json({ success: false, message: "Enter a valid email address." });
+    return;
+  }
+  const result = storeEmailOtp(email);
+  if (result.error) {
+    res.status(result.status || 400).json({ success: false, message: result.error, retryAfter: result.retryAfter });
+    return;
+  }
+  res.json({ success: true, message: "OTP sent successfully.", retryAfter: result.retryAfter, expiresIn: result.expiresIn });
+});
+
+app.post("/api/auth/verify-email-otp", otpVerifyLimiter, (req, res) => {
+  const email = normalizeEmail(req.body.email);
+  const otp = String(req.body.otp || "");
+  if (!email || !/^\d{6}$/.test(otp)) {
+    res.status(400).json({ success: false, message: "Enter the valid 6-digit OTP." });
+    return;
+  }
+  const otps = store.getOtps();
+  const record = otps.find((item) => item.type === "email" && item.email === email);
+  if (!record || record.expiresAt < Date.now()) {
+    if (record) {
+      otps.splice(otps.indexOf(record), 1);
+      store.saveOtps();
+    }
+    res.status(401).json({ success: false, message: "OTP expired. Please request a new one." });
+    return;
+  }
+  record.verifyAttempts = Number(record.verifyAttempts || 0) + 1;
+  if (record.verifyAttempts > 5) {
+    otps.splice(otps.indexOf(record), 1);
+    store.saveOtps();
+    res.status(429).json({ success: false, message: "Maximum verification attempts reached. Request a new OTP." });
+    return;
+  }
+  if (!verifyPassword(otp, record.otpHash)) {
+    store.saveOtps();
+    res.status(401).json({ success: false, message: "The OTP is incorrect or expired." });
+    return;
+  }
+  let user = findUserByEmail(email);
+  if (!user) {
+    user = {
+      id: crypto.randomUUID(),
+      email,
+      phone: "",
+      name: email.split("@")[0],
+      provider: "email_otp",
+      role: resolveRole({ email }),
+      passwordHash: "",
+      addresses: [],
+      wishlist: [],
+      createdAt: new Date().toISOString(),
+    };
+    store.getUsers().push(user);
+  } else {
+    user.provider = user.provider || "email_otp";
+    user.role = resolveRole({ email, phone: user.phone }) === "admin" ? "admin" : user.role || "customer";
+    user.lastLoginAt = new Date().toISOString();
+  }
+  otps.splice(otps.indexOf(record), 1);
+  store.saveOtps();
+  store.saveUsers();
+  res.json({ success: true, message: "Email verified successfully.", user: publicUser(user), token: createToken(publicUser(user)) });
 });
 
 app.post("/api/auth/register", (req, res) => {
@@ -1751,6 +1885,55 @@ app.get("/api/products/:slug", (req, res) => {
   res.json({ success: true, product });
 });
 
+app.get("/api/products/:slug/reviews", (req, res) => {
+  const product = store.getProducts().find((item) => item.slug === req.params.slug);
+  if (!product) {
+    res.status(404).json({ success: false, message: "Product not found" });
+    return;
+  }
+  const reviews = store
+    .getReviews()
+    .filter((review) => review.productId === product._id && review.status !== "rejected")
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const average = reviews.length
+    ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviews.length
+    : 0;
+  res.json({ success: true, reviews, average, total: reviews.length });
+});
+
+app.post("/api/products/:slug/reviews", requireAuth, customerMediaUpload.array("media", 6), (req, res) => {
+  const product = store.getProducts().find((item) => item.slug === req.params.slug);
+  if (!product) {
+    res.status(404).json({ success: false, message: "Product not found" });
+    return;
+  }
+  const rating = Number(req.body.rating || 0);
+  const text = String(req.body.text || "").trim();
+  if (!Number.isFinite(rating) || rating < 1 || rating > 5 || text.length < 3) {
+    res.status(400).json({ success: false, message: "Add a rating from 1 to 5 and a short review." });
+    return;
+  }
+  const review = {
+    id: crypto.randomUUID(),
+    productId: product._id,
+    productSlug: product.slug,
+    customerId: req.user.id,
+    customerName: req.user.name || "Verified customer",
+    rating,
+    text: text.slice(0, 1200),
+    media: (req.files || []).map((file) => ({
+      url: `/uploads/${file.filename}`,
+      type: file.mimetype.startsWith("video/") ? "video" : "image",
+      name: file.originalname,
+    })),
+    status: "approved",
+    createdAt: new Date().toISOString(),
+  };
+  store.getReviews().unshift(review);
+  store.saveReviews();
+  res.status(201).json({ success: true, review });
+});
+
 // ---------------------------------------------------------------------------
 // Orders (authenticated)
 // ---------------------------------------------------------------------------
@@ -1810,6 +1993,26 @@ app.get("/api/orders/my", requireAuth, (req, res) => {
   res.json({ success: true, orders, items: orders, total: orders.length });
 });
 
+app.post("/api/orders/track", (req, res) => {
+  const lookup = String(req.body.lookup || req.body.orderNumber || req.body.trackingNumber || "").trim().toLowerCase();
+  const contact = String(req.body.contact || "").trim().toLowerCase();
+  if (!lookup) {
+    res.status(400).json({ success: false, message: "Enter an order number, AWB, or tracking number." });
+    return;
+  }
+  const order = store.getOrders().find((item) => {
+    const ids = [item._id, item.orderNumber, item.trackingNumber, item.waybill].map((value) => String(value || "").toLowerCase());
+    const contactValues = [item.shippingAddress?.email, item.shippingAddress?.phone, item.customerEmail, item.customerPhone].map((value) => String(value || "").toLowerCase());
+    const contactOk = !contact || contactValues.some((value) => value && value.includes(contact));
+    return ids.includes(lookup) && contactOk;
+  });
+  if (!order) {
+    res.status(404).json({ success: false, message: "We could not find an order with those details." });
+    return;
+  }
+  res.json({ success: true, order: publicOrderTracking(order) });
+});
+
 app.get("/api/orders/:orderId", requireAuth, (req, res) => {
   const order = store
     .getOrders()
@@ -1819,6 +2022,47 @@ app.get("/api/orders/:orderId", requireAuth, (req, res) => {
     return;
   }
   res.json({ success: true, order });
+});
+
+app.post("/api/orders/:orderId/request", requireAuth, customerMediaUpload.array("media", 4), (req, res) => {
+  const order = store
+    .getOrders()
+    .find((item) => item._id === req.params.orderId && item.user === req.user.id);
+  if (!order) {
+    res.status(404).json({ success: false, message: "Order not found" });
+    return;
+  }
+  const type = String(req.body.type || "").toLowerCase();
+  if (!["return", "exchange", "cancel"].includes(type)) {
+    res.status(400).json({ success: false, message: "Choose return, exchange, or cancellation." });
+    return;
+  }
+  if (["delivered", "cancelled", "payment_cancelled"].includes(order.status) && type === "cancel") {
+    res.status(409).json({ success: false, message: "This order can no longer be cancelled." });
+    return;
+  }
+  const request = {
+    id: crypto.randomUUID(),
+    type,
+    reason: String(req.body.reason || "").trim().slice(0, 1200),
+    status: type === "cancel" ? "submitted" : "pending_review",
+    media: (req.files || []).map((file) => ({
+      url: `/uploads/${file.filename}`,
+      type: file.mimetype.startsWith("video/") ? "video" : "image",
+      name: file.originalname,
+    })),
+    createdAt: new Date().toISOString(),
+  };
+  order.customerRequests = [request, ...(order.customerRequests || [])];
+  if (type === "cancel") {
+    const previousStatus = order.status;
+    order.status = "cancelled";
+    order.paymentStatus = order.paymentStatus === "paid" ? "refund_pending" : order.paymentStatus;
+    if (previousStatus !== "cancelled") restoreStock(order);
+  }
+  order.updatedAt = new Date().toISOString();
+  store.saveOrders();
+  res.status(201).json({ success: true, order, request });
 });
 
 app.post("/api/orders/:orderId/tracking/refresh", requireAuth, async (req, res) => {
