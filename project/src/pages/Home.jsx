@@ -28,6 +28,7 @@ export function Home() {
   });
   const products = data?.catalog?.products || [];
   const content = data?.settings?.content || {};
+  const activeCoupon = (data?.settings?.coupons?.items || []).find((coupon) => coupon.active !== false);
   const banner = (content.banners || []).find((item) => item.enabled !== false);
   const dynamicCategories = (data?.settings?.categories?.items || [])
     .filter((item) => item.active !== false)
@@ -82,7 +83,7 @@ export function Home() {
       <section className="offer-banner">
         <div>
           <p>Limited time offer</p>
-          <h2>Flat 20% Off on First Order</h2>
+          <h2>{activeCoupon ? `Use ${activeCoupon.code} at checkout` : "Flat 20% Off on First Order"}</h2>
         </div>
         <Link className="primary-action" to="/shop">Shop Now</Link>
       </section>

@@ -15,20 +15,38 @@ const NEW_ARRIVAL_CUTOFF = Date.now() - 120 * 24 * 60 * 60 * 1000;
 export function Shop() {
   const location = useLocation();
   const params = useParams();
-  const queryCategory = new URLSearchParams(location.search).get("category");
+  const searchParams = new URLSearchParams(location.search);
+  const queryCategory = searchParams.get("category");
+  const querySearch = searchParams.get("search") || "";
   const routeCategory = normalizeRouteCategory(params.category);
   const initialCategory = queryCategory || routeCategory || "All";
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(querySearch);
   const [category, setCategory] = useState(initialCategory);
   const [sort, setSort] = useState("featured");
   const [priceRange, setPriceRange] = useState("All");
   const [ageGroup, setAgeGroup] = useState("All");
-  const { loading, data, error } = useAsync(() => catalogApi.products(), []);
+  const { loading, data, error } = useAsync(async () => {
+    const [catalog, settings] = await Promise.all([
+      catalogApi.products(),
+      catalogApi.settings().catch(() => ({ settings: {} })),
+    ]);
+    return { products: catalog.products || [], settings: settings.settings || {} };
+  }, []);
   const products = data?.products || [];
-  const categories = ["All", ...Object.keys(CATEGORY_TREE), ...new Set(products.flatMap((product) => [product.childCategory, product.category]).filter(Boolean))];
+  const settings = data?.settings || {};
+  const filters = settings.filters || {};
+  const managedCategories = splitList(filters.categories);
+  const categories = ["All", ...new Set([
+    ...Object.keys(CATEGORY_TREE),
+    ...(managedCategories.length ? managedCategories : products.flatMap((product) => [product.childCategory, product.category]).filter(Boolean)),
+  ])];
+  const ageValues = splitList(filters.ageGroups);
+  const priceValues = splitList(filters.priceRanges);
+  const shopByValues = splitList(filters.shopBy);
   useEffect(() => {
     setCategory(queryCategory || routeCategory || "All");
-  }, [queryCategory, routeCategory]);
+    setQuery(querySearch);
+  }, [queryCategory, querySearch, routeCategory]);
   const filtered = products.filter((product) => {
     const normalizedCategory = normalizeCategoryKey(category);
     const isNewArrival =
@@ -41,7 +59,16 @@ export function Shop() {
       (normalizedCategory === "new arrivals" && isNewArrival) ||
       [product.parentCategory, product.childCategory, product.category]
         .some((value) => normalizeCategoryKey(value) === normalizedCategory);
-    const matchesQuery = product.name.toLowerCase().includes(query.toLowerCase());
+    const matchesQuery = !query || [
+      product.name,
+      product.description,
+      product.productNumber,
+      product.sku,
+      product.category,
+      product.parentCategory,
+      product.childCategory,
+      ...(product.tags || []),
+    ].some((value) => String(value || "").toLowerCase().includes(query.toLowerCase()));
     const matchesPrice = priceRange === "All" || priceMatches(product.price, priceRange);
     const matchesAge = ageGroup === "All" || (product.ageGroups || []).includes(ageGroup) || (product.variants || []).some((variant) => variant.size === ageGroup || variant.ageGroup === ageGroup);
     return matchesCategory && matchesQuery && matchesPrice && matchesAge;
@@ -69,10 +96,10 @@ export function Shop() {
       <div className="shop-layout">
         <aside className="shop-filters">
           <h2>Filter By</h2>
-          <FilterBlock title="Shop by" items={["All", "Boys", "Girls"]} active={category} onSelect={setCategory} />
+          <FilterBlock title="Shop by" items={shopByValues.length ? shopByValues : ["All", "Boys", "Girls"]} active={category} onSelect={setCategory} />
           <FilterBlock title="Categories" items={categories.filter((item) => !["All", "Boys", "Girls"].includes(item))} active={category} onSelect={setCategory} />
-          <FilterBlock title="Price" items={["All", "Rs. 0 - 999", "Rs. 1000 - 1999", "Rs. 2000+"]} active={priceRange} onSelect={setPriceRange} />
-          <FilterBlock title="Age Group" items={["All", ...AGE_GROUPS]} active={ageGroup} onSelect={setAgeGroup} />
+          <FilterBlock title="Price" items={priceValues.length ? priceValues : ["All", "Rs. 0 - 999", "Rs. 1000 - 1999", "Rs. 2000+"]} active={priceRange} onSelect={setPriceRange} />
+          <FilterBlock title="Age Group" items={["All", ...(ageValues.length ? ageValues : availableAgeGroups(products))]} active={ageGroup} onSelect={setAgeGroup} />
           <div className="color-dots"><span /><span /><span /><span /><span /><span /></div>
         </aside>
         <div>
@@ -111,6 +138,20 @@ function priceMatches(price, range) {
   if (range === "Rs. 1000 - 1999") return value >= 1000 && value <= 1999;
   if (range === "Rs. 2000+") return value >= 2000;
   return true;
+}
+
+function splitList(value) {
+  if (Array.isArray(value)) return value.map(String).map((item) => item.trim()).filter(Boolean);
+  return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function availableAgeGroups(products) {
+  const values = products.flatMap((product) => [
+    ...(product.ageGroups || []),
+    ...(product.variants || []).map((variant) => variant.ageGroup || variant.size),
+  ]).filter(Boolean);
+  const ordered = AGE_GROUPS.filter((age) => values.includes(age));
+  return ordered.length ? ordered : AGE_GROUPS;
 }
 
 function sortProducts(first, second, sort) {

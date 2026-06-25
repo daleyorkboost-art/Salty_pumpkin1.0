@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { trackEvent } from "../services/tracking";
@@ -15,6 +15,7 @@ export function Layout() {
   const settings = data?.settings || {};
   const logoUrl = settings.store?.logoUrl || "/salty-pumpkin-logo.svg";
   const content = settings.content || {};
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (!logoUrl) return;
@@ -36,12 +37,20 @@ export function Layout() {
     }
   }
 
+  function submitSearch(event) {
+    event.preventDefault();
+    const query = search.trim();
+    navigate(query ? `/shop?search=${encodeURIComponent(query)}` : "/shop");
+  }
+
   return (
     <div className="app-shell">
       <div className="announcement-bar">{content.announcement || "Free Shipping on Orders Above Rs. 999"}</div>
       <header className="site-header">
         <div className="header-utility">
-          <span>Search</span>
+          <form className="header-search" onSubmit={submitSearch}>
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search" aria-label="Search products" />
+          </form>
           <NavLink to="/wishlist">Wishlist ({wishlist.count})</NavLink>
           <NavLink to="/cart">Cart ({count})</NavLink>
           {user ? (

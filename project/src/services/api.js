@@ -66,6 +66,20 @@ export async function api(path, options = {}) {
   return data;
 }
 
+async function apiText(path) {
+  const session = readSession();
+  const headers = {};
+  if (session?.token) headers.Authorization = `Bearer ${session.token}`;
+  const response = await fetch(`${API_BASE}/api${path}`, { headers });
+  const text = await response.text();
+  if (!response.ok) {
+    const error = new Error(text || "Request failed");
+    error.status = response.status;
+    throw error;
+  }
+  return text;
+}
+
 export const authApi = {
   firebaseSession: (body) => api("/auth/firebase-session", { method: "POST", body }),
   login: (body) => api("/auth/email-login", { method: "POST", body }),
@@ -132,6 +146,7 @@ export const adminApi = {
   dashboard: () => api("/admin/dashboard"),
   contactMessages: () => api("/admin/contact-messages"),
   products: () => api("/admin/products"),
+  exportProducts: () => apiText("/admin/products/export.csv"),
   productBySku: (sku) => api(`/admin/products/by-sku/${encodeURIComponent(sku)}`),
   categories: () => api("/admin/categories"),
   media: () => api("/admin/media"),

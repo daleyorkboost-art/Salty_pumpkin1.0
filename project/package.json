@@ -5,9 +5,13 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js",
-    "client:dev": "vite --host 127.0.0.1",
+    "backend": "node index.js",
+    "dev": "npm run dev:backend",
+    "dev:backend": "nodemon index.js",
+    "dev:frontend": "vite --host 127.0.0.1 --port 5173",
+    "client:dev": "npm run dev:frontend",
     "build": "vite build",
+    "build:frontend": "vite build",
     "lint": "eslint \"src/**/*.{js,jsx}\" index.js server.js app.js lib/store.js lib/config.js",
     "test": "npm run lint && node --test && node --check index.js && node --check server.js && node --check app.js && node --check lib/store.js && node --check lib/config.js && node --check lib/delhivery.js"
   },

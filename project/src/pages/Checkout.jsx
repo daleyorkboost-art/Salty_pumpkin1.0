@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
-import { orderApi, paymentApi } from "../services/api";
+import { catalogApi, orderApi, paymentApi } from "../services/api";
 import { trackEvent } from "../services/tracking";
 import { AddressFields } from "../components/AddressFields";
 import { useAuth } from "../context/AuthContext";
 import { authApi } from "../services/api";
 import { syncCurrentFirebaseCustomerData } from "../services/firebaseAuth";
+import { useAsync } from "../hooks/useAsync";
 
 function loadRazorpay() {
   return new Promise((resolve, reject) => {
@@ -76,6 +77,8 @@ export function Checkout() {
   const [error, setError] = useState("");
   const [placing, setPlacing] = useState(false);
   const navigate = useNavigate();
+  const { data: settingsData } = useAsync(() => catalogApi.settings().catch(() => ({ settings: {} })), []);
+  const activeCoupon = (settingsData?.settings?.coupons?.items || []).find((coupon) => coupon.active !== false);
 
   useEffect(() => {
     if (
@@ -281,7 +284,7 @@ export function Checkout() {
       <aside className="summary-box checkout-summary">
         <h2>Order summary</h2>
         {items.map((item) => <p key={item.cartKey || item._id}>{item.name} x {item.qty}</p>)}
-        <label>Coupon<input placeholder="WELCOME10" /></label>
+        <label>Coupon<input placeholder={activeCoupon?.code || "Enter coupon code"} /></label>
         <div className="price-breakdown">
           <p><span>Subtotal</span><strong>Rs. {Number(quote?.subtotal ?? total).toLocaleString("en-IN")}</strong></p>
           <p><span>Shipping</span><strong>{quoteLoading ? "Checking..." : `Rs. ${Number(quote?.shippingFee || 0).toLocaleString("en-IN")}`}</strong></p>

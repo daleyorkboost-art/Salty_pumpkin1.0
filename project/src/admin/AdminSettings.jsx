@@ -5,8 +5,9 @@ import { adminApi } from "../services/api";
 import { PasswordField } from "../components/PasswordField";
 
 const tabs = [
-  ["content", "Content"],
+  ["content", "CMS"],
   ["coupons", "Coupons"],
+  ["filters", "Filters"],
   ["seo", "SEO"],
   ["delivery", "Delivery"],
   ["orders", "Orders"],
@@ -45,7 +46,7 @@ const advancedGroups = [
   {
     key: "store",
     title: "Store Info",
-    fields: [["storeName", "Store Name"], ["supportEmail", "Support Email"], ["supportPhone", "Support Phone"], ["address", "Address", "textarea"], ["logoUrl", "Logo URL"], ["currency", "Currency"]],
+    fields: [["storeName", "Store Name"], ["supportEmail", "Support Email"], ["supportPhone", "Support Phone"], ["address", "Address", "textarea"], ["logoUrl", "Logo URL"], ["currency", "Currency"], ["gstNumber", "GST Number / GSTIN"]],
   },
   {
     key: "domain",
@@ -54,8 +55,12 @@ const advancedGroups = [
   },
 ];
 
+function localId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 const emptyBanner = () => ({
-  id: crypto.randomUUID(),
+  id: globalThis.crypto?.randomUUID?.() || localId("banner"),
   title: "New season collection",
   subtitle: "Fresh styles for little wardrobes.",
   image: "/uploads/103_Pink-103.jpg",
@@ -65,7 +70,7 @@ const emptyBanner = () => ({
 });
 
 const emptyCoupon = () => ({
-  id: crypto.randomUUID(),
+  id: globalThis.crypto?.randomUUID?.() || localId("coupon"),
   code: "WELCOME10",
   type: "percent",
   value: 10,
@@ -74,13 +79,13 @@ const emptyCoupon = () => ({
 });
 
 const emptySizeChart = () => ({
-  id: crypto.randomUUID(),
+  id: globalThis.crypto?.randomUUID?.() || localId("size"),
   name: "Kids standard size chart",
   sizes: "2-3Y: Chest 22in, Length 16in\n4-5Y: Chest 24in, Length 18in",
 });
 
 const emptyCategory = () => ({
-  id: crypto.randomUUID(),
+  id: globalThis.crypto?.randomUUID?.() || localId("category"),
   title: "Girls' Clothing",
   param: "Girls' Clothing",
   image: "/uploads/1_1.jpg",
@@ -256,7 +261,7 @@ export function AdminSettings() {
                 ["heroTitle"], ["heroSubtitle", "textarea"], ["heroCtaText"], ["heroCtaLink"],
                 ["announcement"], ["footerTagline", "textarea"], ["aboutTitle"], ["aboutContent", "textarea"],
                 ["aboutImage"], ["contactTitle"], ["contactPhone"], ["contactEmail"], ["contactAddress", "textarea"],
-                ["contactWhatsapp"], ["contactMapLink"], ["contactBusinessHours"],
+                ["contactWhatsapp"], ["contactNotifyPhone"], ["contactMapLink"], ["contactBusinessHours"],
                 ["contactInstagram"], ["contactFacebook"], ["authPromoImage"], ["authCouponCode"], ["authCouponText"],
               ].map(([key, type = "text"]) => (
                 <Field key={key} label={nice(key)} type={type} value={draft.content?.[key] || ""} onChange={(value) => update("content", key, value)} />
@@ -270,8 +275,9 @@ export function AdminSettings() {
             <h2>Store Logo</h2>
             {draft.store?.logoUrl && <img className="settings-logo-preview" src={draft.store.logoUrl} alt="Current Salty Pumpkin logo" />}
             <Field label="Logo URL" value={draft.store?.logoUrl || ""} onChange={(value) => update("store", "logoUrl", value)} />
+            <Field label="GST Number / GSTIN" value={draft.store?.gstNumber || ""} onChange={(value) => update("store", "gstNumber", value)} />
             <label className="upload-drop compact-upload">Upload/replace logo<input type="file" accept="image/*" onChange={(event) => uploadContentImage(event, (url) => update("store", "logoUrl", url))} /></label>
-            <button disabled={Boolean(busy)} onClick={() => save("store")}>Save logo</button>
+            <button disabled={Boolean(busy)} onClick={() => save("store")}>Save store info</button>
           </div>
         </SettingsPanel>
       )}
@@ -289,6 +295,19 @@ export function AdminSettings() {
             </div>
           ))}
           <button disabled={Boolean(busy)} onClick={() => save("coupons")}>Save coupons</button>
+        </SettingsPanel>
+      )}
+
+      {active === "filters" && (
+        <SettingsPanel title="Shop Filter Management">
+          <div className="settings-fields two-col">
+            <Field label="Shop By values" type="textarea" value={draft.filters?.shopBy || ""} onChange={(value) => update("filters", "shopBy", value)} />
+            <Field label="Category filter values" type="textarea" value={draft.filters?.categories || ""} onChange={(value) => update("filters", "categories", value)} />
+            <Field label="Price ranges" type="textarea" value={draft.filters?.priceRanges || ""} onChange={(value) => update("filters", "priceRanges", value)} />
+            <Field label="Age group values" type="textarea" value={draft.filters?.ageGroups || ""} onChange={(value) => update("filters", "ageGroups", value)} />
+          </div>
+          <p className="muted">Use comma-separated values. Leave category or age group blank to derive values from published products.</p>
+          <button disabled={Boolean(busy)} onClick={() => save("filters")}>Save filters</button>
         </SettingsPanel>
       )}
 
@@ -352,6 +371,7 @@ export function AdminSettings() {
                 <Field label="Title" value={category.title} onChange={(value) => updateList("categories", index, "title", value)} />
                 <Field label="Shop Param" value={category.param} onChange={(value) => updateList("categories", index, "param", value)} />
                 <Field label="Image URL" value={category.image} onChange={(value) => updateList("categories", index, "image", value)} />
+                <label className="upload-drop compact-upload">Upload/replace category image<input type="file" accept="image/*" onChange={(event) => uploadContentImage(event, (url) => updateList("categories", index, "image", url))} /></label>
                 <Field label="Active" type="checkbox" value={category.active} onChange={(value) => updateList("categories", index, "active", value)} />
               </div>
               <button className="secondary-action danger" onClick={() => removeItem("categories", index)}>Delete</button>

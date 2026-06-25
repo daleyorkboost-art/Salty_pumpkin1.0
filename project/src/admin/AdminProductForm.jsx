@@ -39,6 +39,7 @@ const blank = {
   featured: false,
   newArrival: false,
   bestSeller: false,
+  sizeChartId: "",
   variants: [{ size: "", colour: "", stock: "", sku: "" }],
 };
 
@@ -46,7 +47,10 @@ export function AdminProductForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEdit = Boolean(id);
-  const { loading, data, error } = useAsync(() => adminApi.products(), []);
+  const { loading, data, error } = useAsync(async () => {
+    const [productsData, settingsData] = await Promise.all([adminApi.products(), adminApi.settings()]);
+    return { products: productsData.products || [], settings: settingsData.settings || {} };
+  }, []);
   const [form, setForm] = useState(blank);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -75,6 +79,7 @@ export function AdminProductForm() {
       length: product.shipping?.length || "",
       width: product.shipping?.width || "",
       height: product.shipping?.height || "",
+      sizeChartId: product.sizeChartId || "",
       variants: product.variants?.length ? product.variants : blank.variants,
     });
   }, [data, id, isEdit]);
@@ -270,6 +275,16 @@ export function AdminProductForm() {
             ))}
           </EditorSection>
 
+          <EditorSection title="Size Chart">
+            <SelectField
+              label="Product size chart"
+              value={form.sizeChartId}
+              onChange={(value) => update("sizeChartId", value)}
+              options={["", ...(data?.settings?.sizeCharts?.items || []).map((chart) => chart.id)]}
+              labels={{ "": "Use default chart", ...(data?.settings?.sizeCharts?.items || []).reduce((acc, chart) => ({ ...acc, [chart.id]: chart.name }), {}) }}
+            />
+          </EditorSection>
+
           <EditorSection title="Shipping">
             <Field label="Weight kg" type="number" value={form.weight} onChange={(value) => update("weight", value)} />
             <div className="field-grid compact">
@@ -306,12 +321,12 @@ function Field({ label, type = "text", value, onChange, required = false, placeh
   );
 }
 
-function SelectField({ label, value, onChange, options }) {
+function SelectField({ label, value, onChange, options, labels = {} }) {
   return (
     <label>
       {label}
       <select value={value} onChange={(event) => onChange(event.target.value)}>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+        {options.map((option) => <option key={option} value={option}>{labels[option] || option}</option>)}
       </select>
     </label>
   );

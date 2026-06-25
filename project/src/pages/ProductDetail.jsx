@@ -20,10 +20,17 @@ export function ProductDetail() {
   const [activeImage, setActiveImage] = useState("");
   const [reviewForm, setReviewForm] = useState({ rating: 5, text: "", media: [] });
   const [reviewMessage, setReviewMessage] = useState("");
-  const { loading, data, error } = useAsync(() => Promise.all([catalogApi.product(slug), catalogApi.products()]), [slug]);
+  const { loading, data, error } = useAsync(() => Promise.all([
+    catalogApi.product(slug),
+    catalogApi.products(),
+    catalogApi.settings().catch(() => ({ settings: {} })),
+  ]), [slug]);
   const reviewsState = useAsync(() => catalogApi.reviews(slug), [slug, reviewMessage]);
   const product = data?.[0]?.product;
   const allProducts = data?.[1]?.products || [];
+  const settings = data?.[2]?.settings || {};
+  const sizeCharts = settings.sizeCharts?.items || [];
+  const productSizeChart = sizeCharts.find((chart) => chart.id === product?.sizeChartId) || sizeCharts[0];
   const colors = useMemo(() => uniqueValues([...(product?.colors || []), ...(product?.variants || []).map((variant) => variant.color || variant.colour)]), [product]);
   const ageGroups = useMemo(() => uniqueValues([...(product?.ageGroups || []), ...(product?.variants || []).map((variant) => variant.ageGroup || variant.size)]), [product]);
   const gallery = useMemo(() => {
@@ -149,7 +156,8 @@ export function ProductDetail() {
       </section>
       <TrustStrip />
       <section className="section product-tabs">
-        <article><h2>Product Details</h2><ul><li>Fabric: Premium cotton blend</li><li>Soft, breathable finish</li><li>Perfect for casual and party wear</li></ul></article>
+        <article><h2>Product Details</h2><p>{product.description || "Adorable fashion for tiny trendsetters. Soft, comfortable, and perfect for every occasion."}</p></article>
+        {productSizeChart && <article><h2>Size Chart</h2><div className="size-chart-lines">{String(productSizeChart.sizes || "").split(/\n+/).filter(Boolean).map((line) => <span key={line}>{line}</span>)}</div></article>}
         <article><h2>Wash Care</h2><div className="wash-icons"><span>Machine wash cold</span><span>Do not bleach</span><span>Tumble dry low</span><span>Iron low</span></div></article>
       </section>
       <section className="section product-reviews">

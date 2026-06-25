@@ -82,11 +82,30 @@ Node app origin before running `npm run build`.
 ```bash
 npm install
 copy .env.example .env
-npm run build
+```
+
+Run the backend API in one terminal:
+
+```bash
+npm run dev:backend
+```
+
+Run the frontend in a second terminal:
+
+```bash
+npm run dev:frontend
+```
+
+Open `http://127.0.0.1:5173` for the React frontend. The Vite dev server proxies `/api` and `/uploads` to the backend at `http://127.0.0.1:5000`.
+
+For a production-style local run, build and start the backend/static server:
+
+```bash
+npm run build:frontend
 npm start
 ```
 
-Open `http://localhost:5000`.
+Then open `http://127.0.0.1:5000`.
 
 For an admin login and encrypted panel secrets, set the bootstrap vars in `.env`, for example:
 

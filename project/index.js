@@ -422,6 +422,7 @@ function computeOrderFromCatalog(req, body = req.body || {}) {
       shippingFee,
       codExtraFee,
       gst,
+      gstPercent,
       total,
       amount: total,
       shippingAddress,
@@ -960,14 +961,18 @@ function customerSummary(user) {
 function writeInvoicePdf(res, order, user) {
   const doc = new PDFDocument({ margin: 48, size: "A4" });
   const invoiceId = `INV-${order.orderNumber || order._id}`;
+  const storeInfo = config.getConfig("store");
+  const shippingConfig = config.getConfig("shipping");
+  const gstPercent = Number(order.gstPercent ?? shippingConfig.gstPercent ?? 0);
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename=${invoiceId}.pdf`);
   doc.pipe(res);
-  doc.fontSize(22).fillColor("#df3f63").text("Salty Pumpkin", { continued: false });
+  doc.fontSize(22).fillColor("#df3f63").text(storeInfo.storeName || "Salty Pumpkin", { continued: false });
   doc.moveDown(0.3).fontSize(10).fillColor("#555").text("SAURYAINSTA FASHIONS PRIVATE LIMITED");
-  doc.text("Premium kidswear India");
+  doc.text(storeInfo.address || "Premium kidswear India");
+  if (storeInfo.gstNumber) doc.text(`GSTIN: ${storeInfo.gstNumber}`);
   doc.moveDown();
-  doc.fontSize(16).fillColor("#111").text("Tax Invoice");
+  doc.fontSize(16).fillColor("#111").text(gstPercent > 0 || storeInfo.gstNumber ? "GST Tax Invoice" : "Tax Invoice");
   doc.fontSize(10).fillColor("#555").text(`Invoice: ${invoiceId}`);
   doc.text(`Date: ${new Date(order.createdAt || Date.now()).toLocaleDateString("en-IN")}`);
   doc.text(`Order: ${order.orderNumber || order._id}`);
@@ -994,7 +999,7 @@ function writeInvoicePdf(res, order, user) {
   doc.moveDown();
   [
     ["Subtotal", order.subtotal],
-    ["GST/Tax", order.gst],
+    [`GST/Tax${gstPercent > 0 ? ` (${gstPercent}%)` : ""}`, order.gst],
     ["Shipping", order.shippingFee],
     ["COD Fee", order.codExtraFee],
     ["Discount", order.discount || 0],
@@ -1140,6 +1145,7 @@ app.get("/api/storefront/settings", (req, res) => {
       coupons: settings.coupons,
       categories: settings.categories,
       sizeCharts: settings.sizeCharts,
+      filters: settings.filters,
       seo: settings.seo,
       tracking: settings.tracking,
       analytics: settings.analytics,
@@ -1212,6 +1218,7 @@ app.post("/api/contact", contactLimiter, (req, res) => {
   const phone = String(req.body.phone || "").replace(/\D/g, "").slice(-10);
   const subject = String(req.body.subject || "General enquiry").trim();
   const message = String(req.body.message || "").trim();
+  const contentSettings = config.publicSettings().content || {};
   if (!name || !message || (!email && !phone)) {
     res.status(400).json({
       success: false,
@@ -1230,6 +1237,7 @@ app.post("/api/contact", contactLimiter, (req, res) => {
     phone,
     subject,
     message: message.slice(0, 5000),
+    notifyPhone: contentSettings.contactNotifyPhone || "",
     status: "new",
     createdAt: new Date().toISOString(),
   };
@@ -1255,13 +1263,17 @@ app.post("/api/auth/firebase-session", async (req, res) => {
     const decoded = await getFirebaseAdminAuth(firebaseAdminApp).verifyIdToken(idToken);
     const email = String(decoded.email || "").trim().toLowerCase();
     const users = store.getUsers();
+    const phone = decoded.phone_number || "";
     let user = users.find((item) => item.firebaseUid === decoded.uid || (email && item.email === email));
+    const phoneUser = findUserByPhone(phone);
+    if (user && phoneUser && phoneUser !== user) user = mergeCustomerUsers(user, phoneUser);
+    if (!user && phoneUser) user = phoneUser;
     if (!user) {
       user = {
         id: decoded.uid,
         firebaseUid: decoded.uid,
         email,
-        phone: decoded.phone_number || "",
+        phone,
         name: decoded.name || email.split("@")[0] || "Salty Pumpkin Customer",
         photoURL: decoded.picture || "",
         provider: decoded.firebase?.sign_in_provider || "password",
@@ -1275,7 +1287,7 @@ app.post("/api/auth/firebase-session", async (req, res) => {
     } else {
       user.firebaseUid = decoded.uid;
       user.email = email || user.email || "";
-      user.phone = decoded.phone_number || user.phone || "";
+      user.phone = phone || user.phone || "";
       user.name = decoded.name || user.name || email.split("@")[0] || "Salty Pumpkin Customer";
       user.photoURL = decoded.picture || user.photoURL || "";
       const signInProvider = decoded.firebase?.sign_in_provider || "";
@@ -1298,6 +1310,37 @@ function normalizePhone(countryCode, phone) {
   const normalizedCode = code.startsWith("+") ? code : `+${code}`;
   if (!/^\+\d{1,4}$/.test(normalizedCode) || !/^\d{7,12}$/.test(local)) return null;
   return { countryCode: normalizedCode, local, e164: `${normalizedCode}${local}`, providerPhone: `${normalizedCode.replace("+", "")}${local}` };
+}
+
+function normalizeCustomerPhone(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.length <= 10 ? digits.slice(-10) : `+${digits}`;
+}
+
+function mergeCustomerUsers(primary, duplicate) {
+  if (!primary || !duplicate || primary === duplicate) return primary;
+  primary.email = primary.email || duplicate.email || "";
+  primary.phone = primary.phone || duplicate.phone || "";
+  primary.name = primary.name && primary.name !== "Salty Pumpkin Customer" ? primary.name : duplicate.name || primary.name;
+  primary.firebaseUid = primary.firebaseUid || duplicate.firebaseUid || "";
+  primary.addresses = normalizeSavedAddresses([...(primary.addresses || []), ...(duplicate.addresses || [])]);
+  primary.wishlist = [...new Set([...(primary.wishlist || []), ...(duplicate.wishlist || [])])];
+  primary.mergedUserIds = [...new Set([...(primary.mergedUserIds || []), duplicate.id])];
+  store.getOrders().forEach((order) => {
+    if (order.user === duplicate.id) order.user = primary.id;
+  });
+  const users = store.getUsers();
+  const duplicateIndex = users.indexOf(duplicate);
+  if (duplicateIndex >= 0) users.splice(duplicateIndex, 1);
+  store.saveOrders();
+  return primary;
+}
+
+function findUserByPhone(value) {
+  const wanted = normalizeCustomerPhone(value);
+  if (!wanted) return null;
+  return store.getUsers().find((user) => normalizeCustomerPhone(user.phone) === wanted);
 }
 
 function normalizeEmail(email) {
@@ -1439,7 +1482,7 @@ app.post("/api/auth/verify-otp", otpVerifyLimiter, async (req, res) => {
     return;
   }
   const users = store.getUsers();
-  let user = users.find((item) => item.phone === phoneData.e164);
+  let user = findUserByPhone(phoneData.e164);
   let customToken = "";
   let firebaseUid = user?.firebaseUid || `phone_${crypto.createHash("sha256").update(phoneData.e164).digest("hex").slice(0, 28)}`;
   try {
@@ -1559,8 +1602,20 @@ app.post("/api/auth/register", (req, res) => {
     return;
   }
   const lower = email.toLowerCase();
-  if (findUserByEmail(lower)) {
+  const existingEmailUser = findUserByEmail(lower);
+  const existingPhoneUser = findUserByPhone(phone);
+  if (existingEmailUser && (!existingPhoneUser || existingEmailUser === existingPhoneUser)) {
     res.status(409).json({ success: false, message: "Email already registered" });
+    return;
+  }
+  if (existingPhoneUser) {
+    existingPhoneUser.email = existingPhoneUser.email || lower;
+    existingPhoneUser.name = name || existingPhoneUser.name || lower.split("@")[0];
+    existingPhoneUser.passwordHash = hashPassword(password);
+    existingPhoneUser.role = resolveRole({ email: lower, phone: existingPhoneUser.phone }) === "admin" ? "admin" : existingPhoneUser.role || "customer";
+    existingPhoneUser.updatedAt = new Date().toISOString();
+    store.saveUsers();
+    res.status(200).json({ success: true, user: publicUser(existingPhoneUser), token: createToken(publicUser(existingPhoneUser)) });
     return;
   }
   const user = {
@@ -1677,10 +1732,13 @@ app.put("/api/auth/profile", requireAuth, (req, res) => {
     return;
   }
   user.name = String(req.body.name || user.name || "").trim();
-  user.phone = String(req.body.phone || user.phone || "").trim();
+  const nextPhone = String(req.body.phone || user.phone || "").trim();
+  const duplicatePhoneUser = findUserByPhone(nextPhone);
+  const mergedUser = duplicatePhoneUser && duplicatePhoneUser !== user ? mergeCustomerUsers(user, duplicatePhoneUser) : user;
+  mergedUser.phone = nextPhone;
   user.updatedAt = new Date().toISOString();
   store.saveUsers();
-  res.json({ success: true, user: publicUser(user) });
+  res.json({ success: true, user: publicUser(mergedUser) });
 });
 
 app.post("/api/auth/sync-customer-data", requireAuth, (req, res) => {
@@ -1859,7 +1917,20 @@ app.get("/api/products", (req, res) => {
   }
   if (search) {
     const query = String(search).toLowerCase();
-    products = products.filter((p) => p.name && p.name.toLowerCase().includes(query));
+    products = products.filter((p) =>
+      [
+        p.name,
+        p.description,
+        p.productNumber,
+        p.sku,
+        p.category,
+        p.parentCategory,
+        p.childCategory,
+        ...(p.tags || []),
+        ...(p.colors || []),
+        ...(p.ageGroups || []),
+      ].some((value) => String(value || "").toLowerCase().includes(query))
+    );
   }
   products = products.slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   res.json({ success: true, products, items: products, total: products.length });
@@ -2792,6 +2863,28 @@ app.get("/api/admin/products", (req, res) => {
     .slice()
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   res.json({ success: true, items: products, products, total: products.length });
+});
+
+app.get("/api/admin/products/export.csv", (req, res) => {
+  const headers = [
+    "name", "productNumber", "sku", "parentCategory", "childCategory", "category", "description",
+    "price", "mrp", "stock", "colors", "ageGroups", "imageCodes", "modelImageCode", "images",
+    "tags", "sizeChartId", "isPublished",
+  ];
+  const rows = store.getProducts().map((product) => ({
+    ...product,
+    colors: (product.colors || []).join(", "),
+    ageGroups: (product.ageGroups || []).join(", "),
+    imageCodes: (product.imageCodes || []).join(", "),
+    images: (product.images || []).join(", "),
+    tags: (product.tags || []).join(", "),
+  }));
+  const csv = [headers, ...rows.map((row) => headers.map((header) => row[header] ?? ""))]
+    .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(","))
+    .join("\n");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename=salty-pumpkin-products-${new Date().toISOString().slice(0, 10)}.csv`);
+  res.send(csv);
 });
 
 app.get("/api/admin/products/by-sku/:sku", (req, res) => {
