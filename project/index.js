@@ -921,6 +921,52 @@ function normalizeCategoryKey(value) {
   return normalized;
 }
 
+function fuzzyScore(value, query) {
+  const text = String(value || "").toLowerCase();
+  const q = String(query || "").toLowerCase().trim();
+  if (!q) return 0;
+  if (text.includes(q)) return 100 - Math.min(40, text.indexOf(q));
+  const compactText = text.replace(/[^a-z0-9]+/g, "");
+  const compactQuery = q.replace(/[^a-z0-9]+/g, "");
+  if (compactQuery && compactText.includes(compactQuery)) return 82;
+  const words = text.split(/[^a-z0-9]+/).filter(Boolean);
+  if (words.some((word) => word.startsWith(q))) return 74;
+  const distance = Math.min(...words.map((word) => levenshtein(word.slice(0, Math.max(word.length, q.length)), q)), 99);
+  return distance <= Math.max(1, Math.floor(q.length / 4)) ? 60 - distance : 0;
+}
+
+function levenshtein(a, b) {
+  const left = String(a || "");
+  const right = String(b || "");
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i += 1) {
+    let last = i - 1;
+    previous[0] = i;
+    for (let j = 1; j <= right.length; j += 1) {
+      const old = previous[j];
+      previous[j] = Math.min(
+        previous[j] + 1,
+        previous[j - 1] + 1,
+        last + (left[i - 1] === right[j - 1] ? 0 : 1)
+      );
+      last = old;
+    }
+  }
+  return previous[right.length] || 0;
+}
+
+function productSearchScore(product, query) {
+  return Math.max(
+    fuzzyScore(product.name, query),
+    fuzzyScore(product.sku, query),
+    fuzzyScore(product.productNumber, query),
+    fuzzyScore(product.category, query),
+    fuzzyScore(product.parentCategory, query),
+    fuzzyScore(product.childCategory, query),
+    ...(product.tags || []).map((tag) => fuzzyScore(tag, query))
+  );
+}
+
 function normalizeSavedAddresses(addresses = []) {
   const normalized = addresses
     .filter((address) => address && typeof address === "object")
@@ -1917,23 +1963,22 @@ app.get("/api/products", (req, res) => {
   }
   if (search) {
     const query = String(search).toLowerCase();
-    products = products.filter((p) =>
-      [
-        p.name,
-        p.description,
-        p.productNumber,
-        p.sku,
-        p.category,
-        p.parentCategory,
-        p.childCategory,
-        ...(p.tags || []),
-        ...(p.colors || []),
-        ...(p.ageGroups || []),
-      ].some((value) => String(value || "").toLowerCase().includes(query))
-    );
+    products = products
+      .map((product) => ({ product, score: productSearchScore(product, query) }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.product);
   }
-  products = products.slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-  res.json({ success: true, products, items: products, total: products.length });
+  if (!search) products = products.slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  const suggestions = search
+    ? products.slice(0, 8).map((product) => ({
+      name: product.name,
+      sku: product.sku || product.productNumber || "",
+      category: product.childCategory || product.category || product.parentCategory || "",
+      slug: product.slug,
+    }))
+    : [];
+  res.json({ success: true, products, items: products, total: products.length, suggestions });
 });
 
 app.get("/api/products/category/:category", (req, res) => {
@@ -1964,7 +2009,7 @@ app.get("/api/products/:slug/reviews", (req, res) => {
   }
   const reviews = store
     .getReviews()
-    .filter((review) => review.productId === product._id && review.status !== "rejected")
+    .filter((review) => review.productId === product._id && review.status === "approved")
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const average = reviews.length
     ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviews.length
@@ -1997,7 +2042,7 @@ app.post("/api/products/:slug/reviews", requireAuth, customerMediaUpload.array("
       type: file.mimetype.startsWith("video/") ? "video" : "image",
       name: file.originalname,
     })),
-    status: "approved",
+    status: "pending",
     createdAt: new Date().toISOString(),
   };
   store.getReviews().unshift(review);
@@ -2726,6 +2771,34 @@ app.get("/api/admin/dashboard", (req, res) => {
   });
 });
 
+app.get("/api/admin/reviews", (req, res) => {
+  const productsById = new Map(store.getProducts().map((product) => [product._id, product]));
+  const reviews = store.getReviews().map((review) => ({
+    ...review,
+    productName: productsById.get(review.productId)?.name || review.productSlug || review.productId,
+  }));
+  res.json({ success: true, reviews, items: reviews, total: reviews.length });
+});
+
+app.put("/api/admin/reviews/:id", (req, res) => {
+  const review = store.getReviews().find((item) => item.id === req.params.id);
+  if (!review) {
+    res.status(404).json({ success: false, message: "Review not found" });
+    return;
+  }
+  const status = String(req.body.status || "").toLowerCase();
+  if (!["pending", "approved", "rejected"].includes(status)) {
+    res.status(400).json({ success: false, message: "Choose pending, approved, or rejected." });
+    return;
+  }
+  review.status = status;
+  review.moderationNote = String(req.body.note || req.body.moderationNote || review.moderationNote || "").slice(0, 1000);
+  review.moderatedBy = req.user.email || req.user.phone || req.user.id;
+  review.moderatedAt = new Date().toISOString();
+  store.saveReviews();
+  res.json({ success: true, review });
+});
+
 function settingsResponse() {
   const settings = config.publicSettings();
   const configured = {};
@@ -2885,6 +2958,127 @@ app.get("/api/admin/products/export.csv", (req, res) => {
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename=salty-pumpkin-products-${new Date().toISOString().slice(0, 10)}.csv`);
   res.send(csv);
+});
+
+app.get("/api/admin/products/export.xlsx", (req, res) => {
+  const headers = [
+    "name", "productNumber", "sku", "parentCategory", "childCategory", "category", "description",
+    "price", "mrp", "stock", "colors", "ageGroups", "imageCodes", "modelImageCode", "images",
+    "tags", "sizeChartId", "isPublished",
+  ];
+  const rows = store.getProducts().map((product) => headers.map((header) => {
+    const value = product[header];
+    return Array.isArray(value) ? value.join(", ") : value ?? "";
+  }));
+  const workbook = createXlsxBuffer("Products", [headers, ...rows]);
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename=salty-pumpkin-products-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  res.send(workbook);
+});
+
+function createXlsxBuffer(sheetName, rows) {
+  const files = {
+    "[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`,
+    "_rels/.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    "xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,
+    "xl/workbook.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xmlEscape(sheetName).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+    "xl/worksheets/sheet1.xml": worksheetXml(rows),
+  };
+  return zipFiles(files);
+}
+
+function worksheetXml(rows) {
+  const body = rows.map((row, rowIndex) => {
+    const cells = row.map((value, colIndex) => {
+      const ref = `${columnName(colIndex + 1)}${rowIndex + 1}`;
+      const text = xmlEscape(String(value ?? ""));
+      return `<c r="${ref}" t="inlineStr"><is><t>${text}</t></is></c>`;
+    }).join("");
+    return `<row r="${rowIndex + 1}">${cells}</row>`;
+  }).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
+}
+
+function columnName(index) {
+  let name = "";
+  let n = index;
+  while (n > 0) {
+    const remainder = (n - 1) % 26;
+    name = String.fromCharCode(65 + remainder) + name;
+    n = Math.floor((n - 1) / 26);
+  }
+  return name;
+}
+
+function xmlEscape(value) {
+  return String(value).replace(/[<>&'"]/g, (char) => ({
+    "<": "&lt;",
+    ">": "&gt;",
+    "&": "&amp;",
+    "'": "&apos;",
+    '"': "&quot;",
+  }[char]));
+}
+
+function zipFiles(files) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  Object.entries(files).forEach(([name, content]) => {
+    const nameBuffer = Buffer.from(name);
+    const data = Buffer.from(content);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt32LE(0, 10);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuffer.length, 26);
+    localParts.push(local, nameBuffer, data);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt32LE(0, 12);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuffer.length, 28);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(central, nameBuffer);
+    offset += local.length + nameBuffer.length + data.length;
+  });
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(Object.keys(files).length, 8);
+  end.writeUInt16LE(Object.keys(files).length, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+function crc32(buffer) {
+  let crc = -1;
+  for (const byte of buffer) {
+    crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ byte) & 0xff];
+  }
+  return (crc ^ -1) >>> 0;
+}
+
+const CRC_TABLE = Array.from({ length: 256 }, (_, index) => {
+  let crc = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+  }
+  return crc >>> 0;
 });
 
 app.get("/api/admin/products/by-sku/:sku", (req, res) => {

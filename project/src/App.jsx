@@ -7,6 +7,7 @@ import { AdminOrders } from "./admin/AdminOrders";
 import { AdminProductForm } from "./admin/AdminProductForm";
 import { AdminProducts } from "./admin/AdminProducts";
 import { AdminRefunds } from "./admin/AdminRefunds";
+import { AdminReviews } from "./admin/AdminReviews";
 import { AdminSettings } from "./admin/AdminSettings";
 import { AdminTransactions } from "./admin/AdminTransactions";
 import { Layout } from "./components/Layout";
@@ -85,6 +86,7 @@ export function App() {
                 <Route path="customers" element={<AdminCustomers />} />
                 <Route path="transactions" element={<AdminTransactions />} />
                 <Route path="refunds" element={<AdminRefunds />} />
+                <Route path="reviews" element={<AdminReviews />} />
                 <Route path="settings" element={<AdminSettings />} />
               </Route>
               <Route path="*" element={<NotFound />} />

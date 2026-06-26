@@ -11,7 +11,7 @@ const fallbackImage = "/uploads/103_Pink-103.jpg";
 
 export function ProductDetail() {
   const { slug } = useParams();
-  const { add } = useCart();
+  const { add, setBuyNow } = useCart();
   const navigate = useNavigate();
   const wishlist = useWishlist();
   const [qty, setQty] = useState(1);
@@ -93,10 +93,9 @@ export function ProductDetail() {
 
   function buyNow() {
     const cartProduct = selectedCartProduct();
-    Array.from({ length: qty }).forEach(() => add(cartProduct));
-    trackEvent("add_to_cart", productPayload(cartProduct, qty));
+    setBuyNow(cartProduct, qty);
     trackEvent("begin_checkout", productPayload(cartProduct, qty));
-    navigate("/checkout");
+    navigate("/checkout?mode=buy-now");
   }
 
   async function submitReview(event) {
@@ -108,7 +107,7 @@ export function ProductDetail() {
     Array.from(reviewForm.media || []).forEach((file) => body.append("media", file));
     await catalogApi.createReview(slug, body);
     setReviewForm({ rating: 5, text: "", media: [] });
-    setReviewMessage("Review submitted. Thank you for sharing your experience.");
+    setReviewMessage("Review submitted. It will appear after admin approval.");
   }
 
   return (
@@ -135,7 +134,7 @@ export function ProductDetail() {
               {product.mrp > product.price && <span>Rs. {Number(product.mrp || 0).toLocaleString("en-IN")}</span>}
               Rs. {Number(selectedVariant?.priceOverride || product.price || 0).toLocaleString("en-IN")}
             </p>
-            <p>{product.description || "Adorable fashion for tiny trendsetters. Soft, comfortable, and perfect for every occasion."}</p>
+            {product.description && <p>{product.description}</p>}
             {colors.length > 0 && <OptionButtons title="Color" items={colors} active={selectedColor} onSelect={setSelectedColor} />}
             {ageGroups.length > 0 && <OptionButtons title="Age Group" items={ageGroups} active={selectedAge} onSelect={setSelectedAge} />}
             <p className={stock > 0 ? "stock-ok" : "stock-missing"}>{stock > 0 ? `${stock} in stock` : "Out of stock"}</p>
@@ -156,7 +155,7 @@ export function ProductDetail() {
       </section>
       <TrustStrip />
       <section className="section product-tabs">
-        <article><h2>Product Details</h2><p>{product.description || "Adorable fashion for tiny trendsetters. Soft, comfortable, and perfect for every occasion."}</p></article>
+        {product.description && <article><h2>Product Details</h2><p>{product.description}</p></article>}
         {productSizeChart && <article><h2>Size Chart</h2><div className="size-chart-lines">{String(productSizeChart.sizes || "").split(/\n+/).filter(Boolean).map((line) => <span key={line}>{line}</span>)}</div></article>}
         <article><h2>Wash Care</h2><div className="wash-icons"><span>Machine wash cold</span><span>Do not bleach</span><span>Tumble dry low</span><span>Iron low</span></div></article>
       </section>

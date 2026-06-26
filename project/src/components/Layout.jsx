@@ -63,7 +63,7 @@ export function Layout() {
           ) : (
             <>
               <NavLink to="/login">Login</NavLink>
-              <NavLink to="/login?mode=register">Register</NavLink>
+              <NavLink to="/login?mode=phone">Mobile OTP</NavLink>
             </>
           )}
         </div>

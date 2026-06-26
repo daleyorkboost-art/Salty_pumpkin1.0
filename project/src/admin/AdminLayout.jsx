@@ -12,6 +12,7 @@ export function AdminLayout() {
     ["customers", "Customers"],
     ["transactions", "Transactions"],
     ["refunds", "Refunds"],
+    ["reviews", "Reviews"],
     ["settings", "Settings"],
   ];
   const title = titleMap.find(([path]) => location.pathname.includes(path))?.[1] || "Dashboard";
@@ -33,6 +34,7 @@ export function AdminLayout() {
           <NavLink to="/admin/customers"><span>CU</span>Customers</NavLink>
           <NavLink to="/admin/transactions"><span>TX</span>Transactions</NavLink>
           <NavLink to="/admin/refunds"><span>RF</span>Refunds</NavLink>
+          <NavLink to="/admin/reviews"><span>RV</span>Reviews</NavLink>
           <NavLink to="/admin/settings"><span>ST</span>Settings</NavLink>
         </nav>
         <div className="admin-sidebar-card">

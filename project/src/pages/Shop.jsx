@@ -59,20 +59,12 @@ export function Shop() {
       (normalizedCategory === "new arrivals" && isNewArrival) ||
       [product.parentCategory, product.childCategory, product.category]
         .some((value) => normalizeCategoryKey(value) === normalizedCategory);
-    const matchesQuery = !query || [
-      product.name,
-      product.description,
-      product.productNumber,
-      product.sku,
-      product.category,
-      product.parentCategory,
-      product.childCategory,
-      ...(product.tags || []),
-    ].some((value) => String(value || "").toLowerCase().includes(query.toLowerCase()));
+    const matchesQuery = !query || productSearchScore(product, query) > 0;
     const matchesPrice = priceRange === "All" || priceMatches(product.price, priceRange);
     const matchesAge = ageGroup === "All" || (product.ageGroups || []).includes(ageGroup) || (product.variants || []).some((variant) => variant.size === ageGroup || variant.ageGroup === ageGroup);
     return matchesCategory && matchesQuery && matchesPrice && matchesAge;
-  }).sort((first, second) => sortProducts(first, second, sort));
+  }).sort((first, second) => query ? productSearchScore(second, query) - productSearchScore(first, query) : sortProducts(first, second, sort));
+  const suggestions = query ? filtered.slice(0, 6).map((product) => product.name) : [];
 
   return (
     <section className="section page-section shop-shell">
@@ -83,7 +75,8 @@ export function Shop() {
           <h1>{category === "All" ? "Shop kids clothing" : category}</h1>
         </div>
         <div className="toolbar">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products, SKU, category" list="product-search-suggestions" />
+          <datalist id="product-search-suggestions">{suggestions.map((item) => <option value={item} key={item} />)}</datalist>
           <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort products">
             <option value="featured">Sort by Featured</option>
             <option value="price-low">Price: Low to High</option>
@@ -160,6 +153,43 @@ function sortProducts(first, second, sort) {
   const featuredDelta = Number(second.featured === true || second.bestSeller === true) - Number(first.featured === true || first.bestSeller === true);
   if (featuredDelta) return featuredDelta;
   return String(second.createdAt || "").localeCompare(String(first.createdAt || ""));
+}
+
+function productSearchScore(product, query) {
+  return Math.max(
+    fuzzyScore(product.name, query),
+    fuzzyScore(product.sku, query),
+    fuzzyScore(product.productNumber, query),
+    fuzzyScore(product.category, query),
+    fuzzyScore(product.parentCategory, query),
+    fuzzyScore(product.childCategory, query),
+    ...(product.tags || []).map((tag) => fuzzyScore(tag, query)),
+  );
+}
+
+function fuzzyScore(value, query) {
+  const text = String(value || "").toLowerCase();
+  const q = String(query || "").toLowerCase().trim();
+  if (!q) return 0;
+  if (text.includes(q)) return 100 - Math.min(40, text.indexOf(q));
+  const words = text.split(/[^a-z0-9]+/).filter(Boolean);
+  if (words.some((word) => word.startsWith(q))) return 74;
+  const distance = Math.min(...words.map((word) => levenshtein(word.slice(0, Math.max(word.length, q.length)), q)), 99);
+  return distance <= Math.max(1, Math.floor(q.length / 4)) ? 60 - distance : 0;
+}
+
+function levenshtein(a, b) {
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    let last = i - 1;
+    previous[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const old = previous[j];
+      previous[j] = Math.min(previous[j] + 1, previous[j - 1] + 1, last + (a[i - 1] === b[j - 1] ? 0 : 1));
+      last = old;
+    }
+  }
+  return previous[b.length] || 0;
 }
 
 function FilterBlock({ title, items, active, onSelect = () => {} }) {

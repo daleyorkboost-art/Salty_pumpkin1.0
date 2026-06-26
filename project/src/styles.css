@@ -933,6 +933,14 @@ input, select, textarea { border-color: var(--sp-line); border-radius: 2px; back
 .address-lookup-message { margin: -0.25rem 0 0.5rem; color: #23684d; font-size: 0.78rem; }
 .address-row { grid-template-columns: minmax(0, 1fr) auto auto auto auto; }
 .default-address { border-color: rgba(244, 91, 122, 0.45); background: var(--sp-blush); }
+.address-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.8rem; margin: 0.8rem 0 1rem; }
+.address-card { display: grid; gap: 0.55rem; min-height: 150px; padding: 0.9rem; border: 1px solid var(--sp-line); border-radius: 8px; background: #fff; box-shadow: 0 8px 20px rgba(94, 55, 64, 0.06); animation: auth-fade 0.24s ease both; }
+.address-card > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+.address-card span { padding: 0.2rem 0.45rem; border-radius: 999px; background: #fff; color: var(--sp-pink-dark); font-size: 0.68rem; font-weight: 900; }
+.address-card p { margin: 0; color: #4a3f44; line-height: 1.45; }
+.address-card small { color: #7b6d73; }
+.address-card-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; align-self: end; }
+.address-card-actions .secondary-action { min-height: 34px; padding: 0.35rem 0.65rem; font-size: 0.68rem; }
 .contact-social-links { display: flex; gap: 0.8rem; flex-wrap: wrap; margin-top: 0.8rem; }
 .contact-social-links a, .social-row a { color: var(--sp-pink-dark); font-weight: 800; }
 .empty-state { padding: 1.2rem; border: 1px dashed var(--sp-line); border-radius: 10px; background: #fff; color: var(--sp-muted); text-align: center; }
@@ -990,6 +998,10 @@ input, select, textarea { border-color: var(--sp-line); border-radius: 2px; back
   border: 1px solid var(--sp-line);
   background: #fff;
 }
+.review-moderation-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+.review-moderation-card { display: grid; gap: 0.75rem; }
+.review-moderation-card h2 { margin: 0.1rem 0 0; font-size: 1rem; }
+.review-moderation-card p { margin: 0; }
 .size-chart-lines { display: grid; gap: 0.35rem; }
 .size-chart-lines span { padding: 0.45rem 0.6rem; border: 1px solid var(--sp-line); border-radius: 6px; background: #fff; }
 .shipment-event.done > span { background: var(--sp-pink); }
@@ -1093,7 +1105,7 @@ input, select, textarea { border-color: var(--sp-line); border-radius: 2px; back
 .auth-card .auth-logo { max-width: 220px; max-height: 78px; margin: 0; }
 .auth-heading h1 { margin: 0.2rem 0 0.45rem; color: #291d23; font-family: Georgia, serif; font-size: clamp(2rem, 4vw, 2.8rem); letter-spacing: -0.035em; }
 .auth-heading p:last-child { margin: 0; color: #7e6d75; font-size: 0.88rem; }
-.auth-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.2rem; padding: 0.3rem; border: 1px solid var(--sp-line); border-radius: 14px; background: #fff5f7; }
+.auth-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.2rem; padding: 0.3rem; border: 1px solid var(--sp-line); border-radius: 14px; background: #fff5f7; }
 .auth-tabs button { min-width: 0; min-height: 44px; padding: 0.5rem 0.3rem; border-radius: 10px; color: #7b6971; font-size: 0.62rem; line-height: 1.15; letter-spacing: 0; text-transform: none; transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease; }
 .auth-tabs button:hover { transform: none; background: #fff; color: var(--sp-pink-dark); }
 .auth-tabs button.active { background: linear-gradient(135deg, var(--sp-pink), var(--sp-pink-dark)); box-shadow: 0 8px 18px rgba(223,63,99,0.24); color: #fff; }

@@ -26,6 +26,17 @@ export function CartProvider({ children }) {
     persist([...items, { ...product, cartKey: key, qty: 1 }]);
   }
 
+  function setBuyNow(product, qty = 1) {
+    const key = product.cartKey || `${product._id}:${product.variantSku || ""}:${product.size || ""}:${product.colour || product.color || ""}`;
+    const next = [{ ...product, cartKey: key, qty: Math.max(1, Number(qty || 1)), buyNow: true }];
+    sessionStorage.setItem("salty_buy_now", JSON.stringify(next));
+    return next;
+  }
+
+  function clearBuyNow() {
+    sessionStorage.removeItem("salty_buy_now");
+  }
+
   function remove(id) {
     persist(items.filter((item) => (item.cartKey || item._id) !== id));
   }
@@ -41,7 +52,7 @@ export function CartProvider({ children }) {
 
   const total = items.reduce((sum, item) => sum + Number(item.price || 0) * item.qty, 0);
   const count = items.reduce((sum, item) => sum + item.qty, 0);
-  const value = { items, total, count, add, remove, updateQty, clear };
+  const value = { items, total, count, add, remove, updateQty, clear, setBuyNow, clearBuyNow };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

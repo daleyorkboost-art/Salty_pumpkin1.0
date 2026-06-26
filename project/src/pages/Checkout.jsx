@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { catalogApi, orderApi, paymentApi } from "../services/api";
 import { trackEvent } from "../services/tracking";
@@ -61,7 +61,22 @@ function paymentError(status, message, details = {}) {
 }
 
 export function Checkout() {
-  const { items, total, clear } = useCart();
+  const cart = useCart();
+  const location = useLocation();
+  const buyNowItems = useMemo(() => {
+    if (!new URLSearchParams(location.search).has("mode")) return [];
+    try {
+      return JSON.parse(sessionStorage.getItem("salty_buy_now") || "[]");
+    } catch {
+      return [];
+    }
+  }, [location.search]);
+  const items = buyNowItems.length ? buyNowItems : cart.items;
+  const total = items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 1), 0);
+  const clearCheckoutItems = () => {
+    if (buyNowItems.length) cart.clearBuyNow();
+    else cart.clear();
+  };
   const { user, updateUser } = useAuth();
   const savedAddresses = [...(user?.addresses || [])].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
   const defaultAddress = savedAddresses.find((address) => address.isDefault) || savedAddresses[0];
@@ -192,7 +207,7 @@ export function Checkout() {
         transaction_id: finalOrder.orderNumber || finalOrder._id,
         ecommerce: { currency: "INR", value: finalOrder.total || total, payment_type: paymentMethod },
       });
-      clear();
+      clearCheckoutItems();
       navigate(`/order-success/${finalOrder._id}`);
     } catch (err) {
       if (paymentSession && paymentMethod === "online") {

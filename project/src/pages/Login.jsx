@@ -4,14 +4,11 @@ import { useAuth } from "../context/AuthContext";
 import { authApi, catalogApi } from "../services/api";
 import { friendlyFirebaseError } from "../services/firebaseAuth";
 import { trackEvent } from "../services/tracking";
-import { PasswordField } from "../components/PasswordField";
 import { useAsync } from "../hooks/useAsync";
 
 const modeCopy = {
   login: ["Welcome Back", "Sign in with an email OTP to access your orders, wishlist and exclusive offers."],
-  register: ["Join the Salty Pumpkin family", "Create your account for faster checkout and first access to new collections."],
-  forgot: ["Password Login", "Use your existing password if you already created one."],
-  phone: ["Sign in with Phone OTP", "Use your mobile number for a quick and secure sign in."],
+  phone: ["Sign in with Mobile OTP", "Use your mobile number for a quick and secure sign in."],
 };
 
 const icons = {
@@ -84,8 +81,8 @@ function customerSafeError(err, mode) {
 export function Login() {
   const location = useLocation();
   const initialMode = new URLSearchParams(location.search).get("mode");
-  const [mode, setMode] = useState(["register", "forgot", "phone"].includes(initialMode) ? initialMode : "login");
-  const [form, setForm] = useState({ name: "", phone: "", email: "", password: "", confirmPassword: "" });
+  const [mode, setMode] = useState(initialMode === "phone" ? "phone" : "login");
+  const [form, setForm] = useState({ phone: "", email: "" });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
@@ -94,14 +91,14 @@ export function Login() {
   const [countryCode, setCountryCode] = useState("+91");
   const [cooldown, setCooldown] = useState(0);
   const [expiresIn, setExpiresIn] = useState(0);
-  const { login, register, googleLogin, phoneLogin, otpLogin } = useAuth();
+  const { googleLogin, phoneLogin, otpLogin } = useAuth();
   const navigate = useNavigate();
   const { data: settingsData } = useAsync(() => catalogApi.settings().catch(() => ({ settings: {} })), []);
   const logoUrl = settingsData?.settings?.store?.logoUrl || "/salty-pumpkin-logo.svg";
 
   useEffect(() => {
     const requestedMode = new URLSearchParams(location.search).get("mode");
-    if (["login", "register", "forgot", "phone"].includes(requestedMode)) setMode(requestedMode);
+    if (["login", "phone"].includes(requestedMode)) setMode(requestedMode);
   }, [location.search]);
 
   useEffect(() => {
@@ -122,17 +119,7 @@ export function Login() {
       if (mode === "login") {
         await sendEmailOtp();
       } else {
-        if (mode === "register" && form.password !== form.confirmPassword) {
-          throw new Error("Passwords do not match.");
-        }
-        const action = mode === "register" ? register : login;
-        const session = await action(form);
-        await trackEvent(mode === "register" ? "sign_up" : "login", {
-          method: "email",
-          user_data: { email: form.email, phone: form.phone },
-        });
-        const target = location.state?.from || (session.user.role === "admin" ? "/admin" : "/account");
-        navigate(target, { replace: true });
+        await sendOtp();
       }
     } catch (err) {
       setError(err.code ? friendlyFirebaseError(err) : customerSafeError(err, mode));
@@ -251,10 +238,8 @@ export function Login() {
             </div>
             <div className="segmented-control auth-tabs" role="tablist" aria-label="Authentication options">
               {[
-                ["login", "Login"],
-                ["register", "Register"],
-                ["phone", "Phone OTP"],
-                ["forgot", "Password Login"],
+                ["login", "Email OTP"],
+                ["phone", "Mobile OTP"],
               ].map(([key, label]) => (
                 <button type="button" role="tab" aria-selected={mode === key} className={mode === key ? "active" : ""} onClick={() => { setMode(key); setError(""); setNotice(""); setOtpSent(false); setOtp(""); }} key={key}>{label}</button>
               ))}
@@ -262,12 +247,6 @@ export function Login() {
             <div className="auth-form-content" key={mode}>
               {error && <div className="form-error" role="alert">{error}</div>}
               {notice && <div className="form-success" role="status">{notice}</div>}
-              {mode === "register" && (
-                <>
-                  <AuthField label="Full Name" icon="person" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Your full name" required />
-                  <AuthField label="Phone Number" icon="phone" type="tel" inputMode="numeric" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="10-digit mobile number" pattern="[0-9]{10}" required />
-                </>
-              )}
               {mode === "phone" ? (
                 <>
                   <label className="auth-field-label">
@@ -294,7 +273,7 @@ export function Login() {
                     {loading && <span className="button-spinner" aria-hidden="true" />}{loading ? "Please wait..." : otpSent ? "Verify & Sign In" : "Send OTP"}
                   </button>
                 </>
-              ) : mode === "login" ? (
+              ) : (
                 <>
                   <AuthField label="Email address" icon="email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="you@example.com" required />
                   {otpSent && <OtpBoxes value={otp} onChange={setOtp} />}
@@ -306,19 +285,8 @@ export function Login() {
                     {loading && <span className="button-spinner" aria-hidden="true" />}{loading ? "Please wait..." : otpSent ? "Verify & Sign In" : "Send Email OTP"}
                   </button>
                 </>
-              ) : (
-                <>
-                  <AuthField label="Email address" icon="email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="you@example.com" required />
-                  <PasswordField premium value={form.password} onChange={(password) => setForm({ ...form, password })} placeholder="Enter your password" minLength={6} required />
-                  {mode === "register" && <PasswordField premium label="Confirm Password" value={form.confirmPassword} onChange={(confirmPassword) => setForm({ ...form, confirmPassword })} placeholder="Confirm your password" minLength={6} required />}
-                </>
               )}
-              {mode !== "phone" && mode !== "login" && (
-                <button className="auth-submit" disabled={loading}>
-                  {loading && <span className="button-spinner" aria-hidden="true" />}{loading ? "Please wait..." : mode === "register" ? "Create account" : "Sign in"}
-                </button>
-              )}
-              {(mode === "login" || mode === "register") && (
+              {mode === "login" && (
                 <>
                   <div className="auth-divider"><span>or continue with</span></div>
                   <button className="google-auth-button" type="button" disabled={loading} onClick={loginWithGoogle}>

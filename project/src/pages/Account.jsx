@@ -127,17 +127,25 @@ export function Account() {
             </Link>
           ))}
         </div>
-        <h2 id="addresses">Saved Addresses</h2>
-        <button type="button" className="secondary-action" onClick={() => { setEditingId(""); setAddress(emptyAddress); setAddressFormOpen(true); }}>Add Address</button>
-        <div className="stack">
+        <div className="panel-head">
+          <h2 id="addresses">Saved Addresses</h2>
+          <button type="button" className="secondary-action" onClick={() => { setEditingId(""); setAddress({ ...emptyAddress, isDefault: !(user.addresses || []).length }); setAddressFormOpen(true); }}>Add Address</button>
+        </div>
+        <div className="address-card-grid">
           {(user.addresses || []).map((item) => (
-            <div className={`order-row address-row ${item.isDefault ? "default-address" : ""}`} key={item.id}>
-              <span><strong>{item.label || "Saved address"}</strong><br />{[item.line1, item.city, item.state, item.pincode].filter(Boolean).join(", ")}<br /><small>{item.name} {item.phone ? `- ${item.phone}` : ""}</small></span>
-              <span>{item.pincode}{item.isDefault ? " - Default" : ""}</span>
-              <button type="button" onClick={() => { setEditingId(item.id); setAddress(item); setAddressFormOpen(true); }}>Edit</button>
-              {!item.isDefault && <button type="button" onClick={() => setDefaultAddress(item.id)} disabled={saving}>Set default</button>}
-              <button type="button" onClick={() => deleteAddress(item.id)} disabled={saving}>Remove</button>
-            </div>
+            <article className={`address-card ${item.isDefault ? "default-address" : ""}`} key={item.id}>
+              <div>
+                <strong>{item.label || "Saved address"}</strong>
+                {item.isDefault && <span>Default</span>}
+              </div>
+              <p>{[item.line1, item.city, item.state, item.pincode].filter(Boolean).join(", ")}</p>
+              <small>{item.name} {item.phone ? `- ${item.phone}` : ""}</small>
+              <div className="address-card-actions">
+                <button type="button" className="secondary-action" onClick={() => { setEditingId(item.id); setAddress(item); setAddressFormOpen(true); }}>Edit</button>
+                {!item.isDefault && <button type="button" className="secondary-action" onClick={() => setDefaultAddress(item.id)} disabled={saving}>Set default</button>}
+                <button type="button" className="secondary-action danger" onClick={() => deleteAddress(item.id)} disabled={saving}>Delete</button>
+              </div>
+            </article>
           ))}
           {!(user.addresses || []).length && <p className="empty-state">No saved addresses yet.</p>}
         </div>

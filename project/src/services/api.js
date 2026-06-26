@@ -80,16 +80,26 @@ async function apiText(path) {
   return text;
 }
 
+async function apiBlob(path) {
+  const session = readSession();
+  const headers = {};
+  if (session?.token) headers.Authorization = `Bearer ${session.token}`;
+  const response = await fetch(`${API_BASE}/api${path}`, { headers });
+  if (!response.ok) {
+    const text = await response.text();
+    const error = new Error(text || "Request failed");
+    error.status = response.status;
+    throw error;
+  }
+  return response.blob();
+}
+
 export const authApi = {
   firebaseSession: (body) => api("/auth/firebase-session", { method: "POST", body }),
-  login: (body) => api("/auth/email-login", { method: "POST", body }),
-  register: (body) => api("/auth/register", { method: "POST", body }),
   sendOtp: (body) => api("/auth/send-otp", { method: "POST", body }),
   verifyOtp: (body) => api("/auth/verify-otp", { method: "POST", body }),
   sendEmailOtp: (body) => api("/auth/send-email-otp", { method: "POST", body }),
   verifyEmailOtp: (body) => api("/auth/verify-email-otp", { method: "POST", body }),
-  forgotPassword: (body) => api("/auth/forgot-password", { method: "POST", body }),
-  resetPassword: (body) => api("/auth/reset-password", { method: "POST", body }),
   me: () => api("/auth/me"),
   updateProfile: (body) => api("/auth/profile", { method: "PUT", body }),
   syncCustomerData: (body) => api("/auth/sync-customer-data", { method: "POST", body }),
@@ -144,9 +154,12 @@ export const paymentApi = {
 
 export const adminApi = {
   dashboard: () => api("/admin/dashboard"),
+  reviews: () => api("/admin/reviews"),
+  updateReview: (id, body) => api(`/admin/reviews/${id}`, { method: "PUT", body }),
   contactMessages: () => api("/admin/contact-messages"),
   products: () => api("/admin/products"),
   exportProducts: () => apiText("/admin/products/export.csv"),
+  exportProductsXlsx: () => apiBlob("/admin/products/export.xlsx"),
   productBySku: (sku) => api(`/admin/products/by-sku/${encodeURIComponent(sku)}`),
   categories: () => api("/admin/categories"),
   media: () => api("/admin/media"),

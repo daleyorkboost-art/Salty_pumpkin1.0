@@ -100,19 +100,20 @@ export function AdminProducts() {
     }
   }
 
-  async function downloadProductSheet() {
+  async function downloadProductSheet(format = "csv") {
     setBusy(true);
     setMessage("");
     try {
-      const csv = await adminApi.exportProducts();
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const blob = format === "xlsx"
+        ? await adminApi.exportProductsXlsx()
+        : new Blob([await adminApi.exportProducts()], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `salty-pumpkin-products-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.download = `salty-pumpkin-products-${new Date().toISOString().slice(0, 10)}.${format}`;
       link.click();
       URL.revokeObjectURL(url);
-      setMessage("Product sheet downloaded.");
+      setMessage(`Product ${format.toUpperCase()} sheet downloaded.`);
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -186,7 +187,8 @@ export function AdminProducts() {
           <input type="file" accept=".xlsx,.csv" onChange={excelImport} disabled={busy} />
           <span>The first sheet is imported. Missing image codes are reported but do not stop the batch.</span>
         </label>
-        <button type="button" className="secondary-action" disabled={busy} onClick={downloadProductSheet}>Download Product Sheet</button>
+        <button type="button" className="secondary-action" disabled={busy} onClick={() => downloadProductSheet("csv")}>Download CSV</button>
+        <button type="button" className="secondary-action" disabled={busy} onClick={() => downloadProductSheet("xlsx")}>Download XLSX</button>
         <textarea
           value={bulkText}
           onChange={(event) => setBulkText(event.target.value)}
